@@ -1,0 +1,18 @@
+"""全局常量与路径配置。"""
+import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent
+HISTORY_DIR = Path.home() / ".dataAnalyse"
+HISTORY_FILE = HISTORY_DIR / "history.json"
+HISTORY_MAX_ENTRIES = 20
+
+MAX_INPUT_LENGTH = 1 * 1024 * 1024  # 1MB
+WARN_INPUT_LENGTH = 50 * 1024      # 50KB
+MAX_STRINGS = 100
+WARN_STRINGS = 50
+
+DEFAULT_CHUNK_SIZE = 8
+DEFAULT_WINDOW_SIZE = 8
+DEFAULT_WINDOW_STEP = 1
+DEFAULT_NGRAM_SIZE = 3
