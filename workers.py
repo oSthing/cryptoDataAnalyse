@@ -12,6 +12,7 @@ from analyzer.diff import analyze as diff_analyze
 from analyzer.periodicity import analyze as period_analyze
 from analyzer.bit_analysis import analyze as bit_analyze
 from analyzer.multi_string import analyze as ms_analyze
+from analyzer.repeat_substring import analyze as repeat_analyze
 
 
 class AnalyzerWorker(QObject):
@@ -73,20 +74,30 @@ class AnalyzerWorker(QObject):
                 "all_multi": cs_result.all_multi,
             }
 
-            # 4. 分块分析
+            # 4. 单串内重复最多的子串
             self._check_cancel()
-            self.log_msg.emit("[4/8] 分块分析...")
-            self.progress.emit(4, total_steps, "分块分析")
+            self.log_msg.emit("[4/8] 单串内重复子串...")
+            self.progress.emit(4, total_steps, "单串重复子串")
+            repeat_results = repeat_analyze(self.strings, min_length=2, min_count=2, max_results=50)
+            result["repeat_substring"] = [
+                {"index": i, "substrings": sub_results}
+                for i, sub_results in enumerate(repeat_results)
+            ]
+
+            # 5. 分块分析
+            self._check_cancel()
+            self.log_msg.emit("[5/8] 分块分析...")
+            self.progress.emit(5, total_steps, "分块分析")
             chunk_result = chunk_analyze(self.strings, self.chunk_config)
             result["chunking"] = {
                 "chunks": {i: [asdict(c) for c in chunks] for i, chunks in chunk_result.chunks.items()},
                 "duplicates": chunk_result.duplicates,
             }
 
-            # 5. 差异比对
+            # 6. 差异比对
             self._check_cancel()
-            self.log_msg.emit("[5/8] 差异比对...")
-            self.progress.emit(5, total_steps, "差异比对")
+            self.log_msg.emit("[6/8] 差异比对...")
+            self.progress.emit(6, total_steps, "差异比对")
             diff_result = diff_analyze(self.strings)
             result["diff"] = {
                 "hamming": {f"{i},{j}": v for (i, j), v in diff_result.hamming.items()},
@@ -94,17 +105,17 @@ class AnalyzerWorker(QObject):
                 "jaccard": {f"{i},{j}": v for (i, j), v in diff_result.jaccard.items()},
             }
 
-            # 6. 周期性
+            # 7. 周期性
             self._check_cancel()
-            self.log_msg.emit("[6/8] 周期性检测...")
-            self.progress.emit(6, total_steps, "周期性")
+            self.log_msg.emit("[7/8] 周期性检测...")
+            self.progress.emit(7, total_steps, "周期性")
             period_result = period_analyze(self.strings)
             result["periodicity"] = [asdict(p) for p in period_result]
 
-            # 7. 比特层分析
+            # 8. 比特层分析
             self._check_cancel()
-            self.log_msg.emit("[7/8] 比特层分析...")
-            self.progress.emit(7, total_steps, "比特层")
+            self.log_msg.emit("[8/8] 比特层分析...")
+            self.progress.emit(8, total_steps, "比特层")
             bit_result = bit_analyze(self.strings)
             result["bit_analysis"] = [asdict(b) for b in bit_result]
 

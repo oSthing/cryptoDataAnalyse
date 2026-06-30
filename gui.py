@@ -750,12 +750,15 @@ class MainWindow(FluentWindow):
             "all_pairwise": {f"{i},{j}": v for (i, j), v in cs_result.all_pairwise.items()},
             "all_multi": cs_result.all_multi,
         }
-        self._populate_common_substring_tab(cs_data, inputs)
+        repeat_data = self.current_result.get("repeat_substring", [])
+        self._populate_common_substring_tab(cs_data, inputs, repeat_data=repeat_data)
 
-    def _populate_common_substring_tab(self, cs_data: dict, raw_inputs: list):
+    def _populate_common_substring_tab(self, cs_data: dict, raw_inputs: list,
+                                       repeat_data: list = None):
         """填充公共子串 Tab 内容。
 
-        显示三部分：
+        显示 4 部分：
+        0. 单串内重复最多的子串（每条字符串一张卡片）
         1. 公共前缀/后缀
         2. 所有公共子串（按 min_length 过滤，all_pairwise + all_multi）
         3. 最长公共子串（pairwise + multi）
@@ -769,6 +772,41 @@ class MainWindow(FluentWindow):
             w = item.widget()
             if w:
                 w.deleteLater()
+
+        # 0. 单串内重复最多的子串
+        if repeat_data:
+            for entry in repeat_data:
+                idx = entry.get("index", 0)
+                subs = entry.get("substrings", [])
+                if not subs:
+                    continue
+                raw = raw_inputs[idx] if idx < len(raw_inputs) else ""
+                preview = raw if len(raw) <= 50 else raw[:50] + "..."
+                repeat_card = self._make_info_card(
+                    f"串{idx+1} 内重复子串 · {preview}",
+                    f"共 {len(subs)} 个子串出现 ≥ 2 次"
+                )
+                for sub, count, positions in subs[:30]:  # 限制显示前 30
+                    pos_str = ", ".join(str(p) for p in positions[:8])
+                    if len(positions) > 8:
+                        pos_str += f" ... +{len(positions) - 8}"
+                    style = (f"color: {COLOR_ORANGE}; font-family: {FONT_MONO};"
+                             f" font-size: 11px; background: transparent; padding: 1px 0;")
+                    line = make_selectable_label(
+                        f"  次数 {count:3d}  长度{len(sub):3d}  `{sub}`  (位置: {pos_str})",
+                        style
+                    )
+                    line.setParent(repeat_card)
+                    repeat_card.layout().addWidget(line)
+                if len(subs) > 30:
+                    more = make_selectable_label(
+                        f"  ... 还有 {len(subs) - 30} 个",
+                        f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                        f" font-size: 11px; background: transparent;"
+                    )
+                    more.setParent(repeat_card)
+                    repeat_card.layout().addWidget(more)
+                layout.addWidget(repeat_card)
 
         # 公共前缀/后缀
         prefix = cs_data.get("common_prefix", 0)
@@ -1242,7 +1280,11 @@ class MainWindow(FluentWindow):
         if basic and patterns and inputs:
             self.tab_basic.populate_results(basic, patterns, inputs)
         if "common_substring" in result:
-            self._populate_common_substring_tab(result["common_substring"], inputs)
+            self._populate_common_substring_tab(
+                result["common_substring"],
+                inputs,
+                repeat_data=result.get("repeat_substring", []),
+            )
         if "chunking" in result:
             self._populate_chunk_tab(result["chunking"], inputs)
         if "diff" in result:
