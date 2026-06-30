@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from qfluentwidgets import (
     FluentWindow, PushButton, PrimaryPushButton, ProgressBar, SpinBox,
-    InfoBar, setTheme, Theme,
+    InfoBar, setTheme, Theme, FluentIcon as FIF,
 )
 
 import config
@@ -31,7 +31,7 @@ class MainWindow(FluentWindow):
 
         # 创建主界面
         self.main_interface = self._create_main_interface()
-        self.addSubInterface(self.main_interface, None, "分析")
+        self.addSubInterface(self.main_interface, FIF.SEARCH, "分析")
 
     def _create_main_interface(self) -> QWidget:
         widget = QWidget(self)
