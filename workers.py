@@ -79,9 +79,16 @@ class AnalyzerWorker(QObject):
             self.log_msg.emit("[4/8] 单串内重复子串...")
             self.progress.emit(4, total_steps, "单串重复子串")
             repeat_results = repeat_analyze(self.strings, min_length=2, min_count=2, max_results=50)
+            # RepeatResult 是 dataclass，需解包为 dict
             result["repeat_substring"] = [
-                {"index": i, "substrings": sub_results}
-                for i, sub_results in enumerate(repeat_results)
+                {
+                    "index": i,
+                    "substrings": [
+                        {"sub": s, "count": c, "positions": pos}
+                        for s, c, pos in r.substrings
+                    ],
+                }
+                for i, r in enumerate(repeat_results)
             ]
 
             # 5. 分块分析

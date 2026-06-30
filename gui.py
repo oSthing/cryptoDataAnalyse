@@ -777,16 +777,19 @@ class MainWindow(FluentWindow):
         if repeat_data:
             for entry in repeat_data:
                 idx = entry.get("index", 0)
-                subs = entry.get("substrings", [])
-                if not subs:
+                subs_data = entry.get("substrings", [])
+                if not subs_data:
                     continue
                 raw = raw_inputs[idx] if idx < len(raw_inputs) else ""
                 preview = raw if len(raw) <= 50 else raw[:50] + "..."
                 repeat_card = self._make_info_card(
                     f"串{idx+1} 内重复子串 · {preview}",
-                    f"共 {len(subs)} 个子串出现 ≥ 2 次"
+                    f"共 {len(subs_data)} 个子串出现 ≥ 2 次"
                 )
-                for sub, count, positions in subs[:30]:  # 限制显示前 30
+                for sub_info in subs_data[:30]:  # 限制显示前 30
+                    sub = sub_info["sub"]
+                    count = sub_info["count"]
+                    positions = sub_info["positions"]
                     pos_str = ", ".join(str(p) for p in positions[:8])
                     if len(positions) > 8:
                         pos_str += f" ... +{len(positions) - 8}"
@@ -798,9 +801,9 @@ class MainWindow(FluentWindow):
                     )
                     line.setParent(repeat_card)
                     repeat_card.layout().addWidget(line)
-                if len(subs) > 30:
+                if len(subs_data) > 30:
                     more = make_selectable_label(
-                        f"  ... 还有 {len(subs) - 30} 个",
+                        f"  ... 还有 {len(subs_data) - 30} 个",
                         f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
                         f" font-size: 11px; background: transparent;"
                     )
