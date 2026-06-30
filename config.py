@@ -1,5 +1,4 @@
 """全局常量与路径配置。"""
-import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent
