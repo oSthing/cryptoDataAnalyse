@@ -686,6 +686,44 @@ class MainWindow(FluentWindow):
         )
         layout.addWidget(title)
 
+        # 检索行：最小长度
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("最小长度:", widget)
+        filter_label.setStyleSheet(
+            f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
+        )
+        filter_layout.addWidget(filter_label)
+
+        widget.min_length_spin = SpinBox(widget)
+        widget.min_length_spin.setRange(1, 1024)
+        widget.min_length_spin.setValue(1)
+        widget.min_length_spin.setFixedWidth(80)
+        widget.min_length_spin.setStyleSheet(
+            f"QSpinBox {{"
+            f"  background: {COLOR_BG_RAISED};"
+            f"  color: {COLOR_TEXT};"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 4px;"
+            f"  padding: 4px 6px;"
+            f"}}"
+            f"QSpinBox::up-button, QSpinBox::down-button {{"
+            f"  background: {COLOR_BG_RAISED};"
+            f"  border: none;"
+            f"  width: 16px;"
+            f"}}"
+            f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
+        )
+        filter_layout.addWidget(widget.min_length_spin)
+        filter_layout.addStretch()
+
+        widget.apply_btn = PushButton("应用筛选", widget)
+        style_button(widget.apply_btn, is_primary=True)
+        widget.apply_btn.setMinimumHeight(28)
+        widget.apply_btn.clicked.connect(self._apply_common_substring_filter)
+        filter_layout.addWidget(widget.apply_btn)
+
+        layout.addLayout(filter_layout)
+
         widget.content_layout = QVBoxLayout()
         widget.content_layout.setSpacing(10)
         content_wrap = QWidget(widget)
@@ -695,8 +733,33 @@ class MainWindow(FluentWindow):
 
         return widget
 
+    def _apply_common_substring_filter(self):
+        """根据当前 min_length 重新过滤并显示公共子串。"""
+        if not self.current_result:
+            return
+        inputs = self.current_result.get("inputs", [])
+        # 重新计算
+        min_length = self.tab_common.min_length_spin.value()
+        from analyzer.common_substring import analyze as cs_analyze
+        cs_result = cs_analyze(inputs, min_length=min_length)
+        cs_data = {
+            "pairwise": {f"{i},{j}": v for (i, j), v in cs_result.pairwise.items()},
+            "multi": cs_result.multi,
+            "common_prefix": cs_result.common_prefix,
+            "common_suffix": cs_result.common_suffix,
+            "all_pairwise": {f"{i},{j}": v for (i, j), v in cs_result.all_pairwise.items()},
+            "all_multi": cs_result.all_multi,
+        }
+        self._populate_common_substring_tab(cs_data, inputs)
+
     def _populate_common_substring_tab(self, cs_data: dict, raw_inputs: list):
-        """填充公共子串 Tab 内容。"""
+        """填充公共子串 Tab 内容。
+
+        显示三部分：
+        1. 公共前缀/后缀
+        2. 所有公共子串（按 min_length 过滤，all_pairwise + all_multi）
+        3. 最长公共子串（pairwise + multi）
+        """
         if not hasattr(self.tab_common, 'content_layout'):
             return
         layout = self.tab_common.content_layout
@@ -717,54 +780,118 @@ class MainWindow(FluentWindow):
             )
             layout.addWidget(card)
 
-        # 多串公共子串
-        multi = cs_data.get("multi", [])
-        if multi:
-            multi_card = self._make_info_card(f"多串公共子串（{len(multi)} 个）", "")
-            for sub, positions in multi:
+        # 解析 all_pairwise（key 形如 "0,1"）
+        all_pairwise = cs_data.get("all_pairwise", {})
+        # key 是 "i,j" 字符串，需解析
+        parsed_all_pairwise = {}
+        for k, v in all_pairwise.items():
+            i, j = k.split(",")
+            parsed_all_pairwise[(int(i), int(j))] = v
+        all_multi = cs_data.get("all_multi", [])
+
+        # 全部公共子串（多串）
+        if all_multi:
+            multi_card = self._make_info_card(f"全部公共子串（多串 · {len(all_multi)} 个）", "")
+            for sub, positions in all_multi:
                 pos_str = ", ".join(f"串{i+1}@{p}" for i, p in enumerate(positions))
                 style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
                          f" font-size: 12px; background: transparent; padding: 2px 0;")
-                line = make_selectable_label(f"  · `{sub}` (位置: {pos_str})", style)
+                line = make_selectable_label(
+                    f"  · 长度{len(sub):3d}  `{sub}`  (位置: {pos_str})",
+                    style
+                )
                 line.setParent(multi_card)
                 multi_card.layout().addWidget(line)
             layout.addWidget(multi_card)
 
-        # 两两公共子串
+        # 全部公共子串（两两）
+        if parsed_all_pairwise:
+            for (i, j), subs in sorted(parsed_all_pairwise.items()):
+                if not subs:
+                    continue
+                pair_card = self._make_info_card(
+                    f"全部公共子串 · 串{i+1} ↔ 串{j+1} ({len(subs)} 个)",
+                    ""
+                )
+                # 限制显示前 100 个，避免太长
+                for sub, pos_i, pos_j in subs[:100]:
+                    style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                             f" font-size: 11px; background: transparent; padding: 1px 0;")
+                    line = make_selectable_label(
+                        f"  长度{len(sub):3d}  `{sub}`  (串{i+1}@{pos_i}, 串{j+1}@{pos_j})",
+                        style
+                    )
+                    line.setParent(pair_card)
+                    pair_card.layout().addWidget(line)
+                if len(subs) > 100:
+                    more = make_selectable_label(
+                        f"  ... 还有 {len(subs) - 100} 个",
+                        f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                        f" font-size: 11px; background: transparent;"
+                    )
+                    more.setParent(pair_card)
+                    pair_card.layout().addWidget(more)
+                layout.addWidget(pair_card)
+
+        # 最长公共子串（多串）
+        multi = cs_data.get("multi", [])
+        if multi:
+            multi_card = self._make_info_card(f"最长公共子串（多串 · {len(multi)} 个）", "")
+            for sub, positions in multi:
+                pos_str = ", ".join(f"串{i+1}@{p}" for i, p in enumerate(positions))
+                style = (f"color: {COLOR_CYAN}; font-family: {FONT_MONO};"
+                         f" font-size: 12px; background: transparent; padding: 2px 0;")
+                line = make_selectable_label(
+                    f"  · 长度{len(sub):3d}  `{sub}`  (位置: {pos_str})",
+                    style
+                )
+                line.setParent(multi_card)
+                multi_card.layout().addWidget(line)
+            layout.addWidget(multi_card)
+
+        # 最长公共子串（两两）
         pairwise = cs_data.get("pairwise", {})
         if pairwise:
-            pair_card = self._make_info_card(f"两两公共子串（{len(pairwise)} 对）", "")
             for key, subs in sorted(pairwise.items()):
                 i, j = key.split(",")
+                i, j = int(i), int(j)
                 if subs:
-                    sub_strs = ", ".join(f"`{s[0]}`" for s in subs[:5])
+                    pair_card = self._make_info_card(
+                        f"最长公共子串 · 串{i+1} ↔ 串{j+1}",
+                        ""
+                    )
+                    for sub, pos_i, pos_j in subs[:5]:
+                        style = (f"color: {COLOR_CYAN}; font-family: {FONT_MONO};"
+                                 f" font-size: 12px; background: transparent; padding: 2px 0;")
+                        line = make_selectable_label(
+                            f"  长度{len(sub):3d}  `{sub}`  (串{i+1}@{pos_i}, 串{j+1}@{pos_j})",
+                            style
+                        )
+                        line.setParent(pair_card)
+                        pair_card.layout().addWidget(line)
                     if len(subs) > 5:
-                        sub_strs += f" ... +{len(subs)-5} more"
-                    style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
-                             f" font-size: 12px; background: transparent; padding: 2px 0;")
-                    line = make_selectable_label(
-                        f"  串{int(i)+1} ↔ 串{int(j)+1}: {sub_strs}",
-                        style
-                    )
-                    line.setParent(pair_card)
-                    pair_card.layout().addWidget(line)
+                        more = make_selectable_label(
+                            f"  ... +{len(subs) - 5} more (长度相同)",
+                            f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                            f" font-size: 11px; background: transparent;"
+                        )
+                        more.setParent(pair_card)
+                        pair_card.layout().addWidget(more)
+                    layout.addWidget(pair_card)
                 else:
-                    style = (f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
-                             f" font-size: 12px; background: transparent; padding: 2px 0;")
-                    line = make_selectable_label(
-                        f"  串{int(i)+1} ↔ 串{int(j)+1}: (无公共子串)",
-                        style
+                    card = self._make_info_card(
+                        f"串{i+1} ↔ 串{j+1}",
+                        "  (无公共子串)"
                     )
-                    line.setParent(pair_card)
-                    pair_card.layout().addWidget(line)
-            layout.addWidget(pair_card)
+                    layout.addWidget(card)
 
-        if not (prefix > 0 or suffix > 0 or multi or pairwise):
+        if not (prefix > 0 or suffix > 0 or all_multi or parsed_all_pairwise
+                or multi or pairwise):
             empty = make_selectable_label(
                 "(无公共子串数据)",
                 f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
             )
-            empty.setParent(widget)
+            empty.setParent(self.tab_common)
             layout.addWidget(empty)
 
     def _create_chunk_tab(self) -> QWidget:

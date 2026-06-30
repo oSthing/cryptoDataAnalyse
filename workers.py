@@ -20,10 +20,12 @@ class AnalyzerWorker(QObject):
     log_msg = pyqtSignal(str)
     status_changed = pyqtSignal(str)
 
-    def __init__(self, strings: List[str], chunk_config: ChunkingConfig = None):
+    def __init__(self, strings: List[str], chunk_config: ChunkingConfig = None,
+                 substring_min_length: int = 1):
         super().__init__()
         self.strings = strings
         self.chunk_config = chunk_config or ChunkingConfig()
+        self.substring_min_length = substring_min_length
         self.is_running = True
         self._cancel_check_interval = 1000
 
@@ -61,12 +63,14 @@ class AnalyzerWorker(QObject):
             self._check_cancel()
             self.log_msg.emit("[3/8] 公共子串/子序列...")
             self.progress.emit(3, total_steps, "公共子串/子序列")
-            cs_result = cs_analyze(self.strings)
+            cs_result = cs_analyze(self.strings, min_length=self.substring_min_length)
             result["common_substring"] = {
                 "pairwise": {f"{i},{j}": v for (i, j), v in cs_result.pairwise.items()},
                 "multi": cs_result.multi,
                 "common_prefix": cs_result.common_prefix,
                 "common_suffix": cs_result.common_suffix,
+                "all_pairwise": {f"{i},{j}": v for (i, j), v in cs_result.all_pairwise.items()},
+                "all_multi": cs_result.all_multi,
             }
 
             # 4. 分块分析

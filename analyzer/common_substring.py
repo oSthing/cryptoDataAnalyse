@@ -1,6 +1,13 @@
-"""最长公共子串/子序列分析。"""
+"""公共子串/子序列分析。
+
+- longest_common_substring:  最长公共子串（连续）
+- longest_common_subsequence: 最长公共子序列（不连续）
+- all_common_substrings:    所有公共子串（≥min_length 字符）
+- common_prefix_length/suffix_length
+- analyze:                   综合分析
+"""
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -9,6 +16,9 @@ class CommonSubstringResult:
     multi: List[Tuple[str, List[int]]] = field(default_factory=list)
     common_prefix: int = 0
     common_suffix: int = 0
+    # 新增：所有公共子串（按长度降序），用于"显示全部重复"
+    all_pairwise: Dict[Tuple[int, int], List[Tuple[str, int, int]]] = field(default_factory=dict)
+    all_multi: List[Tuple[str, List[int]]] = field(default_factory=list)
 
 
 def longest_common_substring(s1: str, s2: str) -> List[Tuple[str, int, int]]:
@@ -17,7 +27,6 @@ def longest_common_substring(s1: str, s2: str) -> List[Tuple[str, int, int]]:
         return []
 
     n, m = len(s1), len(s2)
-    # dp[i][j] = 以 s1[i-1], s2[j-1] 结尾的公共子串长度
     dp = [[0] * (m + 1) for _ in range(n + 1)]
     max_len = 0
     results = []
@@ -66,11 +75,73 @@ def common_suffix_length(s1: str, s2: str) -> int:
     return i
 
 
-def _multi_lcs(strings: List[str]) -> List[Tuple[str, List[int]]]:
-    """求多串公共子串。返回所有最长公共子串及在每条串中的起始位置。"""
+def _collect_all_substrings(s: str, min_length: int = 1) -> Set[str]:
+    """返回字符串 s 中所有长度 >= min_length 的不同子串集合。"""
+    if not s or min_length < 1:
+        return set()
+    n = len(s)
+    subs: Set[str] = set()
+    for i in range(n):
+        # 收集以 i 起始的所有子串（去重）
+        seen_at_i: Set[str] = set()
+        for j in range(i + min_length, n + 1):
+            sub = s[i:j]
+            if sub not in seen_at_i:
+                seen_at_i.add(sub)
+                subs.add(sub)
+    return subs
+
+
+def all_common_substrings(s1: str, s2: str, min_length: int = 1) -> List[Tuple[str, int, int]]:
+    """返回 s1, s2 中所有长度 >= min_length 的公共子串，按长度降序。
+    每条带 (子串, s1中起始位置, s2中起始位置)。
+    """
+    subs1 = _collect_all_substrings(s1, min_length)
+    if not subs1:
+        return []
+    subs2 = _collect_all_substrings(s2, min_length)
+    common = subs1 & subs2
+    if not common:
+        return []
+    # 收集每个子串在 s1 和 s2 中第一次出现的位置
+    results: List[Tuple[str, int, int]] = []
+    for sub in common:
+        results.append((sub, s1.find(sub), s2.find(sub)))
+    # 按长度降序，长度相同时按首次出现位置升序
+    results.sort(key=lambda x: (-len(x[0]), x[1], x[2]))
+    return results
+
+
+def all_multi_common_substrings(strings: List[str], min_length: int = 1) -> List[Tuple[str, List[int]]]:
+    """返回多串（≥3 串）所有长度 >= min_length 的公共子串。
+    性能说明：使用倒排表思路，先收集第一条的所有子串，再依次与其他串求交集。
+    """
     if not strings or len(strings) < 3:
         return []
-    # 收集所有串对之间的最长公共子串，做交集
+    base = strings[0]
+    # 用 set 操作更快，但需要所有子串
+    candidate = _collect_all_substrings(base, min_length)
+    for s in strings[1:]:
+        sub_set = _collect_all_substrings(s, min_length)
+        candidate &= sub_set
+        if not candidate:
+            return []
+    if not candidate:
+        return []
+    # 收集每条子串在每条串中第一次出现的位置
+    results: List[Tuple[str, List[int]]] = []
+    for sub in candidate:
+        positions = [s.find(sub) for s in strings]
+        results.append((sub, positions))
+    results.sort(key=lambda x: (-len(x[0]), x[1][0]))
+    return results
+
+
+def _multi_lcs(strings: List[str]) -> List[Tuple[str, List[int]]]:
+    """求多串公共子串（最长）。"""
+    if not strings or len(strings) < 3:
+        return []
+    base = strings[0]
     pairwise_subs: List[List[str]] = []
     for i in range(1, len(strings)):
         subs = longest_common_substring(strings[0], strings[i])
@@ -79,7 +150,6 @@ def _multi_lcs(strings: List[str]) -> List[Tuple[str, List[int]]]:
     if not pairwise_subs or not any(pairwise_subs):
         return []
 
-    # 交集
     candidate_subs = set(pairwise_subs[0])
     for subs in pairwise_subs[1:]:
         candidate_subs &= set(subs)
@@ -98,24 +168,38 @@ def _multi_lcs(strings: List[str]) -> List[Tuple[str, List[int]]]:
     return result
 
 
-def analyze(strings: List[str]) -> CommonSubstringResult:
+def analyze(strings: List[str], min_length: int = 1) -> CommonSubstringResult:
+    """综合分析公共子串/子序列。
+
+    min_length: 用于 all_pairwise / all_multi 的子串最小长度。
+    """
     result = CommonSubstringResult()
     if not strings:
         return result
 
-    # 两两公共子串
     n = len(strings)
+
+    # 最长公共子串（两两 + 多串）
     for i in range(n):
         for j in range(i + 1, n):
             subs = longest_common_substring(strings[i], strings[j])
             if subs:
                 result.pairwise[(i, j)] = subs
 
-    # 多串公共子串
     if n >= 3:
         result.multi = _multi_lcs(strings)
 
-    # 公共前缀/后缀（仅多串时计算）
+    # 所有公共子串（按长度降序）
+    for i in range(n):
+        for j in range(i + 1, n):
+            all_subs = all_common_substrings(strings[i], strings[j], min_length=min_length)
+            if all_subs:
+                result.all_pairwise[(i, j)] = all_subs
+
+    if n >= 3:
+        result.all_multi = all_multi_common_substrings(strings, min_length=min_length)
+
+    # 公共前缀/后缀
     if n >= 2:
         prefix = len(strings[0])
         suffix = len(strings[0])
