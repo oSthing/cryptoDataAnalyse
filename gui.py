@@ -4,11 +4,11 @@ from typing import List, Optional
 from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import (
-    QFileDialog, QHBoxLayout, QLabel, QTextEdit, QVBoxLayout, QWidget, QCheckBox
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QTextEdit, QVBoxLayout, QWidget, QCheckBox
 )
 from qfluentwidgets import (
     FluentWindow, PushButton, PrimaryPushButton, ProgressBar, SpinBox,
-    InfoBar, setTheme, Theme, FluentIcon as FIF,
+    InfoBar, setTheme, Theme, FluentIcon as FIF, SubtitleLabel, BodyLabel,
 )
 
 import config
@@ -18,138 +18,179 @@ from analyzer.chunking import ChunkingConfig
 from exporters import to_json, to_markdown
 
 
-class MainWindow(FluentWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("数据分析工具")
-        self.resize(1200, 800)
+class AnalysisInterface(QScrollArea):
+    """主分析界面：参照参考项目结构（ScrollArea + QWidget#view 透明 + QLabel 白字）。"""
 
-        # 全局暗色样式：白字（具体子组件样式在各组件 setStyleSheet 中）
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.view = QWidget(self)
+        self.layout = QVBoxLayout(self.view)
+        self.setWidget(self.view)
+        self.setWidgetResizable(True)
+        self.setObjectName("AnalysisInterface")
+        self.view.setObjectName("view")
+
+        # 参照参考项目：透明背景透出 FluentWindow 暗色 + Label 白字
         self.setStyleSheet("""
-            QWidget { color: white; background-color: transparent; }
-            QLabel { color: white; background: transparent; }
-            QCheckBox { color: white; background: transparent; }
-            QCheckBox::indicator { background-color: #2b2b2b; border: 1px solid #3a3a3a; }
-            QCheckBox::indicator:checked { background-color: #0078d7; }
-            QStatusBar { color: white; }
-            ScrollArea, QWidget#view { background: transparent; }
+            QScrollArea, QWidget#view { background: transparent; }
+            QLabel { color: white; }
         """)
 
-        self.worker_thread: Optional[QThread] = None
-        self.worker: Optional[AnalyzerWorker] = None
-        self.current_result: Optional[dict] = None
-        self.history = History(config.HISTORY_FILE, max_entries=config.HISTORY_MAX_ENTRIES)
+        # 标题
+        self.title = SubtitleLabel("字符串分析", self)
+        self.layout.addWidget(self.title)
 
-        # 创建主界面
-        self.main_interface = self._create_main_interface()
-        self.addSubInterface(self.main_interface, FIF.SEARCH, "分析")
+        # 输入分组
+        self.input_group = QFrame(self)
+        self.input_group.setObjectName("input_group")
+        self.input_group.setStyleSheet("""
+            QFrame#input_group {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        input_group_layout = QVBoxLayout(self.input_group)
 
-    def _create_main_interface(self) -> QWidget:
-        widget = QWidget(self)
-        widget.setObjectName("mainInterface")
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        input_label = BodyLabel("输入数据（每行一条字符串）：", self)
+        input_label.setStyleSheet("color: white; font-weight: bold;")
+        input_group_layout.addWidget(input_label)
 
-        # 输入区
-        input_label = QLabel("输入数据（每行一条字符串）：", widget)
-        layout.addWidget(input_label)
-
-        self.input_text = QTextEdit(widget)
+        self.input_text = QTextEdit(self)
         self.input_text.setPlaceholderText("在此输入要分析的字符串，每行一条...")
         self.input_text.setMinimumHeight(200)
         font = self.input_text.font()
         font.setFamily("Consolas")
         self.input_text.setFont(font)
-        # 强制深色背景（特异性高，确保 qfluentwidgets 全局样式不覆盖）
-        self.input_text.setStyleSheet(
-            "QTextEdit { background-color: #202020; color: #ffffff;"
-            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px;"
-            " selection-background-color: #0078d7; selection-color: white; }"
-            "QTextEdit:focus { border: 1px solid #0078d7; }"
-        )
-        layout.addWidget(self.input_text)
+        input_group_layout.addWidget(self.input_text)
 
-        # Hex 模式勾选
-        self.hex_checkbox = QCheckBox("输入是 Hex 字符串（按字节切分）", widget)
-        layout.addWidget(self.hex_checkbox)
+        self.hex_checkbox = QCheckBox("输入是 Hex 字符串（按字节切分）", self)
+        self.hex_checkbox.setStyleSheet("color: white;")
+        input_group_layout.addWidget(self.hex_checkbox)
+
+        self.layout.addWidget(self.input_group)
 
         # 分块配置行
         chunk_layout = QHBoxLayout()
-        chunk_layout.addWidget(QLabel("分块长度:"))
-        self.chunk_size_spin = SpinBox(widget)
+        chunk_label = BodyLabel("分块长度:", self)
+        chunk_label.setStyleSheet("color: white;")
+        chunk_layout.addWidget(chunk_label)
+        self.chunk_size_spin = SpinBox(self)
         self.chunk_size_spin.setRange(1, 1024)
         self.chunk_size_spin.setValue(config.DEFAULT_CHUNK_SIZE)
-        self.chunk_size_spin.setStyleSheet(
-            "SpinBox { background-color: #2b2b2b; color: white; }"
-            "SpinBox QLineEdit { background-color: #2b2b2b; color: white;"
-            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px; }"
-        )
         chunk_layout.addWidget(self.chunk_size_spin)
 
         chunk_layout.addSpacing(20)
-        chunk_layout.addWidget(QLabel("窗口大小:"))
-        self.window_size_spin = SpinBox(widget)
+        ws_label = BodyLabel("窗口大小:", self)
+        ws_label.setStyleSheet("color: white;")
+        chunk_layout.addWidget(ws_label)
+        self.window_size_spin = SpinBox(self)
         self.window_size_spin.setRange(1, 1024)
         self.window_size_spin.setValue(config.DEFAULT_WINDOW_SIZE)
-        self.window_size_spin.setStyleSheet(self.chunk_size_spin.styleSheet())
         chunk_layout.addWidget(self.window_size_spin)
 
         chunk_layout.addSpacing(20)
-        chunk_layout.addWidget(QLabel("步长:"))
-        self.window_step_spin = SpinBox(widget)
+        st_label = BodyLabel("步长:", self)
+        st_label.setStyleSheet("color: white;")
+        chunk_layout.addWidget(st_label)
+        self.window_step_spin = SpinBox(self)
         self.window_step_spin.setRange(1, 1024)
         self.window_step_spin.setValue(config.DEFAULT_WINDOW_STEP)
-        self.window_step_spin.setStyleSheet(self.chunk_size_spin.styleSheet())
         chunk_layout.addWidget(self.window_step_spin)
 
         chunk_layout.addStretch()
-        layout.addLayout(chunk_layout)
+        self.layout.addLayout(chunk_layout)
 
         # 按钮行
         button_layout = QHBoxLayout()
-        self.btn_start = PrimaryPushButton("开始分析", widget)
-        self.btn_stop = PushButton("停止", widget)
-        self.btn_import = PushButton("从文件导入", widget)
-        self.btn_clear = PushButton("清空", widget)
-        self.btn_export_json = PushButton("导出 JSON", widget)
-        self.btn_export_md = PushButton("导出 Markdown", widget)
+        self.btn_start = PrimaryPushButton("开始分析", self)
+        self.btn_stop = PushButton("停止", self)
+        self.btn_import = PushButton("从文件导入", self)
+        self.btn_clear = PushButton("清空", self)
+        self.btn_stop.setEnabled(False)
 
         button_layout.addWidget(self.btn_start)
         button_layout.addWidget(self.btn_stop)
         button_layout.addWidget(self.btn_import)
         button_layout.addWidget(self.btn_clear)
         button_layout.addStretch()
+        self.btn_export_json = PushButton("导出 JSON", self)
+        self.btn_export_md = PushButton("导出 Markdown", self)
         button_layout.addWidget(self.btn_export_json)
         button_layout.addWidget(self.btn_export_md)
-        layout.addLayout(button_layout)
+        self.layout.addLayout(button_layout)
 
-        # 进度条
-        self.progress_bar = ProgressBar(widget)
-        self.progress_bar.setRange(0, 8)
-        self.progress_bar.setValue(0)
-        layout.addWidget(self.progress_bar)
+        # 进度
+        progress_label = BodyLabel("处理进度:", self)
+        progress_label.setStyleSheet("color: white;")
+        self.layout.addWidget(progress_label)
+        self.progress_bar = ProgressBar(self)
+        self.layout.addWidget(self.progress_bar)
 
-        # 状态标签
-        self.status_label = QLabel("就绪", widget)
-        layout.addWidget(self.status_label)
+        # 日志分组
+        self.log_group = QFrame(self)
+        self.log_group.setObjectName("log_group")
+        self.log_group.setStyleSheet("""
+            QFrame#log_group {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        log_group_layout = QVBoxLayout(self.log_group)
 
-        # 日志区
-        log_label = QLabel("运行日志：", widget)
-        layout.addWidget(log_label)
+        log_label = BodyLabel("当前状态简报:", self)
+        log_label.setStyleSheet("color: white;")
+        log_group_layout.addWidget(log_label)
 
-        self.log_text = QTextEdit(widget)
+        self.log_text = QTextEdit(self)
         self.log_text.setReadOnly(True)
         log_font = self.log_text.font()
         log_font.setFamily("Consolas")
         self.log_text.setFont(log_font)
         self.log_text.setMinimumHeight(150)
-        self.log_text.setStyleSheet(
-            "QTextEdit { background-color: #202020; color: #d0d0d0;"
-            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px;"
-            " selection-background-color: #0078d7; selection-color: white; }"
-        )
-        layout.addWidget(self.log_text)
+        log_group_layout.addWidget(self.log_text)
+
+        self.layout.addWidget(self.log_group)
+
+        # 状态
+        self.status_label = BodyLabel("就绪", self)
+        self.status_label.setStyleSheet("color: white;")
+        self.layout.addWidget(self.status_label)
+
+        self.layout.addStretch()
+
+
+class MainWindow(FluentWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("数据分析工具")
+        self.resize(1200, 800)
+
+        self.worker_thread: Optional[QThread] = None
+        self.worker: Optional[AnalyzerWorker] = None
+        self.current_result: Optional[dict] = None
+        self.history = History(config.HISTORY_FILE, max_entries=config.HISTORY_MAX_ENTRIES)
+
+        # 创建主界面（参照参考项目的 ScrollArea + view 结构）
+        self.analysis_interface = AnalysisInterface(self)
+        self.addSubInterface(self.analysis_interface, FIF.SEARCH, "分析")
+
+        # 暴露属性给测试
+        self.input_text = self.analysis_interface.input_text
+        self.hex_checkbox = self.analysis_interface.hex_checkbox
+        self.chunk_size_spin = self.analysis_interface.chunk_size_spin
+        self.window_size_spin = self.analysis_interface.window_size_spin
+        self.window_step_spin = self.analysis_interface.window_step_spin
+        self.btn_start = self.analysis_interface.btn_start
+        self.btn_stop = self.analysis_interface.btn_stop
+        self.btn_import = self.analysis_interface.btn_import
+        self.btn_clear = self.analysis_interface.btn_clear
+        self.btn_export_json = self.analysis_interface.btn_export_json
+        self.btn_export_md = self.analysis_interface.btn_export_md
+        self.progress_bar = self.analysis_interface.progress_bar
+        self.log_text = self.analysis_interface.log_text
+        self.status_label = self.analysis_interface.status_label
 
         # 信号连接
         self.btn_start.clicked.connect(self._on_start_clicked)
@@ -158,8 +199,6 @@ class MainWindow(FluentWindow):
         self.btn_clear.clicked.connect(self._on_clear_clicked)
         self.btn_export_json.clicked.connect(lambda: self._on_export_clicked("json"))
         self.btn_export_md.clicked.connect(lambda: self._on_export_clicked("md"))
-
-        return widget
 
     def _append_log(self, msg: str):
         self.log_text.append(msg)
