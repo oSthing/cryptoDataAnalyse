@@ -15,3 +15,9 @@ venv/
 # Project management artifacts (not source code)
 .superpowers/
 docs/
+
+# PyInstaller build artifacts
+build/
+dist/
+
+# PyInstaller spec file (dataAnalyse.spec) is intentionally tracked
