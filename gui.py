@@ -371,7 +371,7 @@ class AnalysisInterface(QScrollArea):
         self.input_text.setPlaceholderText("在此输入要分析的字符串，每行一条...")
         self.input_text.setMinimumHeight(100)
         font = QFont(FONT_MONO)
-        font.setPointSize(11)
+        font.setPointSize(10)
         self.input_text.setFont(font)
         # I3 深色输入框：直接 setStyleSheet 覆盖
         self.input_text.setStyleSheet(
@@ -521,9 +521,9 @@ class MainWindow(FluentWindow):
 
         # 5 个 Tab
         self.tab_basic = self._create_basic_tab()
-        self.tab_common = self._create_placeholder_tab("公共子串 / 子序列")
-        self.tab_chunk = self._create_placeholder_tab("分块分析")
-        self.tab_diff = self._create_placeholder_tab("差异比对")
+        self.tab_common = self._create_common_substring_tab()
+        self.tab_chunk = self._create_chunk_tab()
+        self.tab_diff = self._create_diff_tab()
         self.tab_log = self._create_log_tab()
 
         self.addSubInterface(self.tab_basic, FIF.SEARCH, "基本特征")
@@ -584,7 +584,7 @@ class MainWindow(FluentWindow):
         widget.log_text = QTextEdit(widget)
         widget.log_text.setReadOnly(True)
         font = QFont(FONT_MONO)
-        font.setPointSize(11)
+        font.setPointSize(10)
         widget.log_text.setFont(font)
         widget.log_text.setMinimumHeight(500)
         # I3 深色日志区
@@ -603,6 +603,316 @@ class MainWindow(FluentWindow):
 
         self.log_text = widget.log_text
         return widget
+
+    def _create_common_substring_tab(self) -> QWidget:
+        """Tab 2: 公共子串/子序列。"""
+        widget = QScrollArea(self)
+        widget.setObjectName("CommonSubstringInterface")
+        view = QWidget(widget)
+        view.setObjectName("view")
+        layout = QVBoxLayout(view)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        widget.setWidget(view)
+        widget.setWidgetResizable(True)
+        widget.setStyleSheet("QScrollArea, QWidget#view { background: transparent; }")
+
+        title = QLabel("公共子串 / 子序列", widget)
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        widget.content_layout = QVBoxLayout()
+        widget.content_layout.setSpacing(10)
+        content_wrap = QWidget(widget)
+        content_wrap.setLayout(widget.content_layout)
+        layout.addWidget(content_wrap)
+        layout.addStretch()
+
+        return widget
+
+    def _populate_common_substring_tab(self, cs_data: dict, raw_inputs: list):
+        """填充公共子串 Tab 内容。"""
+        if not hasattr(self.tab_common, 'content_layout'):
+            return
+        layout = self.tab_common.content_layout
+        # 清空现有内容
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        # 公共前缀/后缀
+        prefix = cs_data.get("common_prefix", 0)
+        suffix = cs_data.get("common_suffix", 0)
+        if prefix > 0 or suffix > 0:
+            card = self._make_info_card(
+                "公共前缀 / 后缀",
+                f"公共前缀长度: {prefix}    公共后缀长度: {suffix}"
+            )
+            layout.addWidget(card)
+
+        # 多串公共子串
+        multi = cs_data.get("multi", [])
+        if multi:
+            multi_card = self._make_info_card(f"多串公共子串（{len(multi)} 个）", "")
+            for sub, positions in multi:
+                pos_str = ", ".join(f"串{i+1}@{p}" for i, p in enumerate(positions))
+                line = QLabel(f"  · `{sub}` (位置: {pos_str})", multi_card)
+                line.setStyleSheet(
+                    f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                    f" font-size: 12px; background: transparent; padding: 2px 0;"
+                )
+                multi_card.layout().addWidget(line)
+            layout.addWidget(multi_card)
+
+        # 两两公共子串
+        pairwise = cs_data.get("pairwise", {})
+        if pairwise:
+            pair_card = self._make_info_card(f"两两公共子串（{len(pairwise)} 对）", "")
+            for key, subs in sorted(pairwise.items()):
+                i, j = key.split(",")
+                if subs:
+                    sub_strs = ", ".join(f"`{s[0]}`" for s in subs[:5])
+                    if len(subs) > 5:
+                        sub_strs += f" ... +{len(subs)-5} more"
+                    line = QLabel(
+                        f"  串{int(i)+1} ↔ 串{int(j)+1}: {sub_strs}",
+                        pair_card
+                    )
+                    line.setStyleSheet(
+                        f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                        f" font-size: 12px; background: transparent; padding: 2px 0;"
+                    )
+                    pair_card.layout().addWidget(line)
+                else:
+                    line = QLabel(
+                        f"  串{int(i)+1} ↔ 串{int(j)+1}: (无公共子串)",
+                        pair_card
+                    )
+                    line.setStyleSheet(
+                        f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                        f" font-size: 12px; background: transparent; padding: 2px 0;"
+                    )
+                    pair_card.layout().addWidget(line)
+            layout.addWidget(pair_card)
+
+        if not (prefix > 0 or suffix > 0 or multi or pairwise):
+            empty = QLabel("(无公共子串数据)", widget)
+            empty.setStyleSheet(
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
+                f" background: transparent;"
+            )
+            layout.addWidget(empty)
+
+    def _create_chunk_tab(self) -> QWidget:
+        """Tab 3: 分块分析。"""
+        widget = QScrollArea(self)
+        widget.setObjectName("ChunkingInterface")
+        view = QWidget(widget)
+        view.setObjectName("view")
+        layout = QVBoxLayout(view)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        widget.setWidget(view)
+        widget.setWidgetResizable(True)
+        widget.setStyleSheet("QScrollArea, QWidget#view { background: transparent; }")
+
+        title = QLabel("分块分析", widget)
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        widget.content_layout = QVBoxLayout()
+        widget.content_layout.setSpacing(10)
+        content_wrap = QWidget(widget)
+        content_wrap.setLayout(widget.content_layout)
+        layout.addWidget(content_wrap)
+        layout.addStretch()
+
+        return widget
+
+    def _populate_chunk_tab(self, chunk_data: dict, raw_inputs: list):
+        """填充分块 Tab 内容。"""
+        if not hasattr(self.tab_chunk, 'content_layout'):
+            return
+        layout = self.tab_chunk.content_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        chunks_by_idx = chunk_data.get("chunks", {})
+        duplicates = chunk_data.get("duplicates", {})
+
+        if not chunks_by_idx:
+            empty = QLabel("(无分块数据)", self.tab_chunk)
+            empty.setStyleSheet(
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
+                f" background: transparent;"
+            )
+            layout.addWidget(empty)
+            return
+
+        for idx, chunks in sorted(chunks_by_idx.items(), key=lambda x: int(x[0])):
+            raw = raw_inputs[int(idx)] if int(idx) < len(raw_inputs) else ""
+            preview = raw if len(raw) <= 50 else raw[:50] + "..."
+
+            dup_count = len(duplicates.get(idx, []))
+            subtitle = f"{len(chunks)} 个分块"
+            if dup_count > 0:
+                subtitle += f"  ·  {dup_count} 个重复"
+
+            card = self._make_info_card(f"串{idx+1} · {preview}", subtitle)
+
+            # 分块表格
+            for chunk in chunks[:50]:  # 限制显示前 50 个
+                dup_badge = " [重复]" if chunk.get("is_duplicate") else ""
+                content_preview = chunk['content'] if len(chunk['content']) <= 40 else chunk['content'][:40] + "..."
+                row = QLabel(
+                    f"  #{chunk['index']:3d}  `{content_preview}`  "
+                    f"SHA256: {chunk['sha256'][:16]}...{dup_badge}",
+                    card
+                )
+                style = f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                if chunk.get("is_duplicate"):
+                    style += f" color: {COLOR_ORANGE};"
+                style += " font-size: 11px; background: transparent; padding: 1px 0;"
+                row.setStyleSheet(style)
+                card.layout().addWidget(row)
+            if len(chunks) > 50:
+                more = QLabel(f"  ... 还有 {len(chunks)-50} 个分块", card)
+                more.setStyleSheet(
+                    f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                    f" font-size: 11px; background: transparent;"
+                )
+                card.layout().addWidget(more)
+
+            layout.addWidget(card)
+
+    def _create_diff_tab(self) -> QWidget:
+        """Tab 4: 差异比对。"""
+        widget = QScrollArea(self)
+        widget.setObjectName("DiffInterface")
+        view = QWidget(widget)
+        view.setObjectName("view")
+        layout = QVBoxLayout(view)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        widget.setWidget(view)
+        widget.setWidgetResizable(True)
+        widget.setStyleSheet("QScrollArea, QWidget#view { background: transparent; }")
+
+        title = QLabel("差异比对", widget)
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        widget.content_layout = QVBoxLayout()
+        widget.content_layout.setSpacing(10)
+        content_wrap = QWidget(widget)
+        content_wrap.setLayout(widget.content_layout)
+        layout.addWidget(content_wrap)
+        layout.addStretch()
+
+        return widget
+
+    def _populate_diff_tab(self, diff_data: dict, raw_inputs: list):
+        """填充差异比对 Tab 内容。"""
+        if not hasattr(self.tab_diff, 'content_layout'):
+            return
+        layout = self.tab_diff.content_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        hamming = diff_data.get("hamming", {})
+        levenshtein = diff_data.get("levenshtein", {})
+        jaccard = diff_data.get("jaccard", {})
+
+        if not hamming:
+            empty = QLabel("(无差异比对数据)", self.tab_diff)
+            empty.setStyleSheet(
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
+                f" background: transparent;"
+            )
+            layout.addWidget(empty)
+            return
+
+        for key in sorted(hamming.keys()):
+            i, j = key.split(",")
+            i, j = int(i), int(j)
+
+            h_val = hamming.get(key, -1)
+            l_val = levenshtein.get(key, 0)
+            j_val = jaccard.get(key, 0.0)
+
+            h_str = f"{h_val}" if h_val >= 0 else "不等长"
+            j_str = f"{j_val:.3f}"
+
+            raw_i = raw_inputs[i] if i < len(raw_inputs) else ""
+            raw_j = raw_inputs[j] if j < len(raw_inputs) else ""
+            preview_i = raw_i if len(raw_i) <= 25 else raw_i[:25] + "..."
+            preview_j = raw_j if len(raw_j) <= 25 else raw_j[:25] + "..."
+
+            card = self._make_info_card(
+                f"串{i+1} ↔ 串{j+1}",
+                f"  `{preview_i}` ↔ `{preview_j}`"
+            )
+            metrics = QLabel(
+                f"  汉明距离: {h_str}    "
+                f"编辑距离: {l_val}    "
+                f"Jaccard: {j_str}",
+                card
+            )
+            metrics.setStyleSheet(
+                f"color: {COLOR_CYAN}; font-family: {FONT_MONO};"
+                f" font-size: 12px; background: transparent; padding: 4px 0;"
+            )
+            card.layout().addWidget(metrics)
+            layout.addWidget(card)
+
+    def _make_info_card(self, title: str, subtitle: str = "") -> QFrame:
+        """通用分组卡片。"""
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{"
+            f"  background: rgba(255, 255, 255, 0.05);"
+            f"  border-radius: {GROUP_RADIUS}px;"
+            f"  padding: 12px;"
+            f"  border: none;"
+            f"}}"
+        )
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(6)
+
+        title_label = QLabel(title, card)
+        title_label.setStyleSheet(
+            f"color: {COLOR_CYAN}; font-size: 13px; font-weight: 500;"
+            f" background: transparent;"
+        )
+        card_layout.addWidget(title_label)
+
+        if subtitle:
+            sub_label = QLabel(subtitle, card)
+            sub_label.setStyleSheet(
+                f"color: {COLOR_TEXT_MUTED}; font-size: 11px;"
+                f" background: transparent;"
+            )
+            card_layout.addWidget(sub_label)
+
+        return card
 
     def _create_placeholder_tab(self, title: str) -> QWidget:
         widget = QWidget(self)
@@ -742,8 +1052,16 @@ class MainWindow(FluentWindow):
         basic = result.get("basic_features", [])
         patterns = result.get("patterns", [])
         inputs = result.get("inputs", [])
+
+        # 填充各 Tab
         if basic and patterns and inputs:
             self.tab_basic.populate_results(basic, patterns, inputs)
+        if "common_substring" in result:
+            self._populate_common_substring_tab(result["common_substring"], inputs)
+        if "chunking" in result:
+            self._populate_chunk_tab(result["chunking"], inputs)
+        if "diff" in result:
+            self._populate_diff_tab(result["diff"], inputs)
 
         if self.worker_thread:
             self.worker_thread.quit()

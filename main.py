@@ -22,7 +22,7 @@ if __name__ == '__main__':
     setTheme(Theme.DARK)
 
     # 设置全局默认字体（清晰、支持中文）
-    default_font = QFont("Microsoft YaHei UI", 10)
+    default_font = QFont("Microsoft YaHei UI", 9)
     app.setFont(default_font)
 
     # 强制暗色调色板（覆盖 qfluentwidgets 浅色默认）
