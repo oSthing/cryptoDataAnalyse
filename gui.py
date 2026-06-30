@@ -24,6 +24,24 @@ class MainWindow(FluentWindow):
         self.setWindowTitle("数据分析工具")
         self.resize(1200, 800)
 
+        # 全局暗色样式：白字、半透明深色输入框
+        self.setStyleSheet("""
+            QLabel { color: white; }
+            QCheckBox { color: white; }
+            QTextEdit {
+                background-color: #2b2b2b;
+                color: white;
+                border: 1px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 6px;
+                selection-background-color: #0078d7;
+            }
+            QTextEdit:focus { border: 1px solid #0078d7; }
+            QTextEdit QPlaceholderLabel { color: #888; }
+            QStatusBar { color: white; }
+            ScrollArea, QWidget#view { background: transparent; }
+        """)
+
         self.worker_thread: Optional[QThread] = None
         self.worker: Optional[AnalyzerWorker] = None
         self.current_result: Optional[dict] = None
