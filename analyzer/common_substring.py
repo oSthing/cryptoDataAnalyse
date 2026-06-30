@@ -94,7 +94,10 @@ def _collect_all_substrings(s: str, min_length: int = 1) -> Set[str]:
 
 def all_common_substrings(s1: str, s2: str, min_length: int = 1) -> List[Tuple[str, int, int]]:
     """返回 s1, s2 中所有长度 >= min_length 的公共子串，按长度降序。
-    每条带 (子串, s1中起始位置, s2中起始位置)。
+
+    去重规则：若一个子串已被任何"更长"的公共子串包含（位置重叠且完全在内部），
+    则不显示。位置定义：
+      - 包含 = 子串 A 完全在 子串 B 的范围内（按各自串内的位置）
     """
     subs1 = _collect_all_substrings(s1, min_length)
     if not subs1:
@@ -103,23 +106,42 @@ def all_common_substrings(s1: str, s2: str, min_length: int = 1) -> List[Tuple[s
     common = subs1 & subs2
     if not common:
         return []
+
     # 收集每个子串在 s1 和 s2 中第一次出现的位置
-    results: List[Tuple[str, int, int]] = []
+    raw = []
     for sub in common:
-        results.append((sub, s1.find(sub), s2.find(sub)))
+        raw.append((sub, s1.find(sub), s2.find(sub)))
     # 按长度降序，长度相同时按首次出现位置升序
-    results.sort(key=lambda x: (-len(x[0]), x[1], x[2]))
+    raw.sort(key=lambda x: (-len(x[0]), x[1], x[2]))
+
+    # 去重：跳过被已通过项完全包含的子串
+    results: List[Tuple[str, int, int]] = []
+    for sub, pos_i, pos_j in raw:
+        if pos_i < 0 or pos_j < 0:
+            continue
+        sub_len = len(sub)
+        # 检查是否被之前已通过的任何项包含
+        contained = False
+        for kept_sub, kept_i, kept_j in results:
+            if (pos_i >= kept_i
+                    and pos_i + sub_len <= kept_i + len(kept_sub)
+                    and pos_j >= kept_j
+                    and pos_j + sub_len <= kept_j + len(kept_sub)):
+                contained = True
+                break
+        if not contained:
+            results.append((sub, pos_i, pos_j))
     return results
 
 
 def all_multi_common_substrings(strings: List[str], min_length: int = 1) -> List[Tuple[str, List[int]]]:
     """返回多串（≥3 串）所有长度 >= min_length 的公共子串。
-    性能说明：使用倒排表思路，先收集第一条的所有子串，再依次与其他串求交集。
+
+    去重规则：若一个子串已被任何"更长"的公共子串在每条串内都完全包含，则不显示。
     """
     if not strings or len(strings) < 3:
         return []
     base = strings[0]
-    # 用 set 操作更快，但需要所有子串
     candidate = _collect_all_substrings(base, min_length)
     for s in strings[1:]:
         sub_set = _collect_all_substrings(s, min_length)
@@ -128,12 +150,32 @@ def all_multi_common_substrings(strings: List[str], min_length: int = 1) -> List
             return []
     if not candidate:
         return []
-    # 收集每条子串在每条串中第一次出现的位置
-    results: List[Tuple[str, List[int]]] = []
+
+    raw = []
     for sub in candidate:
         positions = [s.find(sub) for s in strings]
-        results.append((sub, positions))
-    results.sort(key=lambda x: (-len(x[0]), x[1][0]))
+        raw.append((sub, positions))
+    raw.sort(key=lambda x: (-len(x[0]), x[1][0]))
+
+    # 去重：跳过被已通过项在每条串中都包含的子串
+    results: List[Tuple[str, List[int]]] = []
+    for sub, positions in raw:
+        if any(p < 0 for p in positions):
+            continue
+        sub_len = len(sub)
+        contained = False
+        for kept_sub, kept_pos in results:
+            # 必须在每条串内都被包含
+            all_inside = all(
+                positions[k] >= kept_pos[k]
+                and positions[k] + sub_len <= kept_pos[k] + len(kept_sub)
+                for k in range(len(strings))
+            )
+            if all_inside:
+                contained = True
+                break
+        if not contained:
+            results.append((sub, positions))
     return results
 
 

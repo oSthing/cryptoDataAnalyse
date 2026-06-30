@@ -94,13 +94,17 @@ def test_all_common_substrings_sorted_by_length():
 
 
 def test_all_common_substrings_min_length():
-    """最小长度过滤。"""
-    subs_min1 = all_common_substrings("abcdef", "xbcdyz", min_length=1)
-    subs_min3 = all_common_substrings("abcdef", "xbcdyz", min_length=3)
+    """最小长度过滤（去重前需用更长串验证）。"""
+    # s1="aaaa", s2="aaaa" -> 去重后只有 1 个（"aaaa"）
+    subs_min1 = all_common_substrings("aaaa", "aaaa", min_length=1)
+    subs_min3 = all_common_substrings("aaaa", "aaaa", min_length=3)
+    # min=1 至少包含 "a","aa","aaa","aaaa"，去重后 = ["aaaa"]
+    assert any(s[0] == "aaaa" for s in subs_min1)
+    # min=3 至少包含 "aaa","aaaa"，去重后 = ["aaaa"]
+    assert any(s[0] == "aaaa" for s in subs_min3)
+    # 所有结果长度都 >= min_length
     assert all(len(s[0]) >= 1 for s in subs_min1)
     assert all(len(s[0]) >= 3 for s in subs_min3)
-    # min=3 时应该少一些
-    assert len(subs_min3) < len(subs_min1)
 
 
 def test_all_common_substrings_user_example():
@@ -132,3 +136,42 @@ def test_analyze_includes_all_substrings():
     assert (0, 1) in result.all_pairwise
     # 最长应排在最前
     assert result.all_pairwise[(0, 1)][0][0] == "bcd"
+
+
+def test_all_common_substrings_dedup_nested():
+    """嵌套子串去重：被更长公共子串包含的不显示。"""
+    s1 = "98fea6b8123d811480a1add915a34d4fextra"
+    s2 = "98fea6b8123d811480a1add915a34d4fdbbfd86515a457e1b20bf4751ea00107123123123123"
+    subs = all_common_substrings(s1, s2, min_length=1)
+    substrs_set = {s[0] for s in subs}
+    # 32 字符主串应在
+    assert "98fea6b8123d811480a1add915a34d4f" in substrs_set
+    # 被 32 字符主串完全包含的子串不应出现
+    assert "98fea6b8" not in substrs_set
+    assert "123d8114" not in substrs_set
+    # 但 s1 后面 "extra" 不在 s2 中，所以也不应出现
+    assert "extra" not in substrs_set
+
+
+def test_all_common_substrings_dedup_no_false_positive():
+    """去重不应误判：两个独立的公共子串不互相包含。"""
+    # s1="abcXYZabc", s2="abc__abc" -> 公共子串只有 "abc"（"abcXYZabc" 不在 s2）
+    subs = all_common_substrings("abcXYZabc", "abc__abc", min_length=2)
+    substrs_set = {s[0] for s in subs}
+    # "abcXYZabc" 不在 s2 中
+    assert "abcXYZabc" not in substrs_set
+    # "abc" 应该在
+    assert "abc" in substrs_set
+
+
+def test_all_multi_common_substrings_dedup():
+    """多串去重。"""
+    s1 = "98fea6b8123d811480a1add915a34d4fabc"
+    s2 = "98fea6b8123d811480a1add915a34d4fdef"
+    s3 = "98fea6b8123d811480a1add915a34d4fghi"
+    subs = all_multi_common_substrings([s1, s2, s3], min_length=1)
+    substrs_set = {s[0] for s in subs}
+    # 32 字符主串应在
+    assert "98fea6b8123d811480a1add915a34d4f" in substrs_set
+    # 短子串不应出现
+    assert "98fea6b8" not in substrs_set
