@@ -18,7 +18,7 @@ from typing import List, Optional
 from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtGui import QFont, QPalette, QColor, QTextCursor
 from PyQt5.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QTextEdit,
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QSpinBox, QTextEdit,
     QVBoxLayout, QWidget, QCheckBox,
 )
 from qfluentwidgets import (
@@ -466,10 +466,11 @@ class AnalysisInterface(QScrollArea):
             lbl = QLabel(label, self)
             lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px; background: transparent;")
             chunk_layout.addWidget(lbl)
-            spin = SpinBox(self)
+            spin = QSpinBox(self)
             spin.setRange(1, 1024)
             spin.setValue(default)
             spin.setFixedWidth(80)
+            spin.setButtonSymbols(QSpinBox.NoButtons)  # 隐藏上下按钮
             # I3 深色 SpinBox
             spin.setStyleSheet(
                 f"QSpinBox {{"
@@ -477,13 +478,8 @@ class AnalysisInterface(QScrollArea):
                 f"  color: {COLOR_TEXT};"
                 f"  border: 1px solid {COLOR_BORDER};"
                 f"  border-radius: 4px;"
-                f"  padding: 4px 6px;"
+                f"  padding: 4px 8px;"
                 f"  selection-background-color: {COLOR_ACCENT};"
-                f"}}"
-                f"QSpinBox::up-button, QSpinBox::down-button {{"
-                f"  background: {COLOR_BG_RAISED};"
-                f"  border: none;"
-                f"  width: 16px;"
                 f"}}"
                 f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
             )
@@ -694,22 +690,19 @@ class MainWindow(FluentWindow):
         )
         filter_layout.addWidget(filter_label)
 
-        widget.min_length_spin = SpinBox(widget)
+        widget.min_length_spin = QSpinBox(widget)
         widget.min_length_spin.setRange(1, 1024)
         widget.min_length_spin.setValue(1)
         widget.min_length_spin.setFixedWidth(80)
+        widget.min_length_spin.setButtonSymbols(QSpinBox.NoButtons)
         widget.min_length_spin.setStyleSheet(
             f"QSpinBox {{"
             f"  background: {COLOR_BG_RAISED};"
             f"  color: {COLOR_TEXT};"
             f"  border: 1px solid {COLOR_BORDER};"
             f"  border-radius: 4px;"
-            f"  padding: 4px 6px;"
-            f"}}"
-            f"QSpinBox::up-button, QSpinBox::down-button {{"
-            f"  background: {COLOR_BG_RAISED};"
-            f"  border: none;"
-            f"  width: 16px;"
+            f"  padding: 4px 8px;"
+            f"  selection-background-color: {COLOR_ACCENT};"
             f"}}"
             f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
         )
