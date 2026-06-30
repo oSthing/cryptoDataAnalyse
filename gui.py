@@ -734,12 +734,13 @@ class MainWindow(FluentWindow):
         return widget
 
     def _apply_common_substring_filter(self):
-        """根据当前 min_length 重新过滤并显示公共子串。"""
+        """根据当前 min_length 重新过滤并显示公共子串和单串重复子串。"""
         if not self.current_result:
             return
         inputs = self.current_result.get("inputs", [])
-        # 重新计算
         min_length = self.tab_common.min_length_spin.value()
+
+        # 重新计算公共子串
         from analyzer.common_substring import analyze as cs_analyze
         cs_result = cs_analyze(inputs, min_length=min_length)
         cs_data = {
@@ -750,7 +751,23 @@ class MainWindow(FluentWindow):
             "all_pairwise": {f"{i},{j}": v for (i, j), v in cs_result.all_pairwise.items()},
             "all_multi": cs_result.all_multi,
         }
-        repeat_data = self.current_result.get("repeat_substring", [])
+
+        # 重新计算单串内重复子串（应用 min_length）
+        from analyzer.repeat_substring import analyze as repeat_analyze
+        repeat_results = repeat_analyze(
+            inputs, min_length=min_length, min_count=2, max_results=50
+        )
+        repeat_data = [
+            {
+                "index": i,
+                "substrings": [
+                    {"sub": s, "count": c, "positions": pos}
+                    for s, c, pos in r.substrings
+                ],
+            }
+            for i, r in enumerate(repeat_results)
+        ]
+
         self._populate_common_substring_tab(cs_data, inputs, repeat_data=repeat_data)
 
     def _populate_common_substring_tab(self, cs_data: dict, raw_inputs: list,

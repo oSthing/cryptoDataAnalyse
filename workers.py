@@ -29,7 +29,6 @@ class AnalyzerWorker(QObject):
         self.substring_min_length = substring_min_length
         self.is_running = True
         self._cancel_check_interval = 1000
-
     def stop(self):
         self.is_running = False
 
@@ -78,7 +77,12 @@ class AnalyzerWorker(QObject):
             self._check_cancel()
             self.log_msg.emit("[4/8] 单串内重复子串...")
             self.progress.emit(4, total_steps, "单串重复子串")
-            repeat_results = repeat_analyze(self.strings, min_length=2, min_count=2, max_results=50)
+            repeat_results = repeat_analyze(
+                self.strings,
+                min_length=self.substring_min_length,
+                min_count=2,
+                max_results=50,
+            )
             # RepeatResult 是 dataclass，需解包为 dict
             result["repeat_substring"] = [
                 {
