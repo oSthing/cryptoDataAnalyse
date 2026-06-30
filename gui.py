@@ -24,20 +24,13 @@ class MainWindow(FluentWindow):
         self.setWindowTitle("数据分析工具")
         self.resize(1200, 800)
 
-        # 全局暗色样式：白字、半透明深色输入框
+        # 全局暗色样式：白字（具体子组件样式在各组件 setStyleSheet 中）
         self.setStyleSheet("""
-            QLabel { color: white; }
-            QCheckBox { color: white; }
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: white;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 6px;
-                selection-background-color: #0078d7;
-            }
-            QTextEdit:focus { border: 1px solid #0078d7; }
-            QTextEdit QPlaceholderLabel { color: #888; }
+            QWidget { color: white; background-color: transparent; }
+            QLabel { color: white; background: transparent; }
+            QCheckBox { color: white; background: transparent; }
+            QCheckBox::indicator { background-color: #2b2b2b; border: 1px solid #3a3a3a; }
+            QCheckBox::indicator:checked { background-color: #0078d7; }
             QStatusBar { color: white; }
             ScrollArea, QWidget#view { background: transparent; }
         """)
@@ -68,6 +61,13 @@ class MainWindow(FluentWindow):
         font = self.input_text.font()
         font.setFamily("Consolas")
         self.input_text.setFont(font)
+        # 强制深色背景（特异性高，确保 qfluentwidgets 全局样式不覆盖）
+        self.input_text.setStyleSheet(
+            "QTextEdit { background-color: #202020; color: #ffffff;"
+            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px;"
+            " selection-background-color: #0078d7; selection-color: white; }"
+            "QTextEdit:focus { border: 1px solid #0078d7; }"
+        )
         layout.addWidget(self.input_text)
 
         # Hex 模式勾选
@@ -80,6 +80,11 @@ class MainWindow(FluentWindow):
         self.chunk_size_spin = SpinBox(widget)
         self.chunk_size_spin.setRange(1, 1024)
         self.chunk_size_spin.setValue(config.DEFAULT_CHUNK_SIZE)
+        self.chunk_size_spin.setStyleSheet(
+            "SpinBox { background-color: #2b2b2b; color: white; }"
+            "SpinBox QLineEdit { background-color: #2b2b2b; color: white;"
+            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px; }"
+        )
         chunk_layout.addWidget(self.chunk_size_spin)
 
         chunk_layout.addSpacing(20)
@@ -87,6 +92,7 @@ class MainWindow(FluentWindow):
         self.window_size_spin = SpinBox(widget)
         self.window_size_spin.setRange(1, 1024)
         self.window_size_spin.setValue(config.DEFAULT_WINDOW_SIZE)
+        self.window_size_spin.setStyleSheet(self.chunk_size_spin.styleSheet())
         chunk_layout.addWidget(self.window_size_spin)
 
         chunk_layout.addSpacing(20)
@@ -94,6 +100,7 @@ class MainWindow(FluentWindow):
         self.window_step_spin = SpinBox(widget)
         self.window_step_spin.setRange(1, 1024)
         self.window_step_spin.setValue(config.DEFAULT_WINDOW_STEP)
+        self.window_step_spin.setStyleSheet(self.chunk_size_spin.styleSheet())
         chunk_layout.addWidget(self.window_step_spin)
 
         chunk_layout.addStretch()
@@ -137,6 +144,11 @@ class MainWindow(FluentWindow):
         log_font.setFamily("Consolas")
         self.log_text.setFont(log_font)
         self.log_text.setMinimumHeight(150)
+        self.log_text.setStyleSheet(
+            "QTextEdit { background-color: #202020; color: #d0d0d0;"
+            " border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px;"
+            " selection-background-color: #0078d7; selection-color: white; }"
+        )
         layout.addWidget(self.log_text)
 
         # 信号连接
