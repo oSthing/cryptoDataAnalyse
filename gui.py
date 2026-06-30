@@ -70,9 +70,12 @@ QWidget {{
     color: {COLOR_TEXT};
     background-color: {COLOR_BG};
 }}
+/* 所有文字可选中：QLabel 默认不可选，强制开启 TextSelectableByMouse */
 QLabel {{
     color: {COLOR_TEXT};
     background: transparent;
+    selection-background-color: {COLOR_ACCENT};
+    selection-color: {COLOR_TEXT};
 }}
 QCheckBox {{
     color: {COLOR_TEXT};
@@ -90,6 +93,53 @@ QScrollArea, QWidget#view {{
     background-color: {COLOR_BG};
     border: none;
 }}
+/* Windows 原生滚动条样式 */
+QScrollBar:vertical {{
+    background: {COLOR_BG};
+    width: 16px;
+    margin: 0;
+    border: none;
+}}
+QScrollBar::handle:vertical {{
+    background: #5a5a5a;
+    min-height: 24px;
+    border: 2px solid {COLOR_BG};
+    border-radius: 0px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: #7a7a7a;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    background: none;
+    height: 0;
+    border: none;
+}}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: none;
+}}
+QScrollBar:horizontal {{
+    background: {COLOR_BG};
+    height: 16px;
+    margin: 0;
+    border: none;
+}}
+QScrollBar::handle:horizontal {{
+    background: #5a5a5a;
+    min-width: 24px;
+    border: 2px solid {COLOR_BG};
+    border-radius: 0px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background: #7a7a7a;
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    background: none;
+    width: 0;
+    border: none;
+}}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: none;
+}}
 QTextEdit, QPlainTextEdit {{
     background-color: {COLOR_BG_RAISED};
     color: {COLOR_TEXT};
@@ -100,6 +150,13 @@ QTextEdit, QPlainTextEdit {{
     selection-color: {COLOR_TEXT};
 }}
 QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {COLOR_ACCENT}; }}
+/* 隐藏主页面 SpinBox 的上下按钮 */
+QSpinBox#mainSpinBox::up-button, QSpinBox#mainSpinBox::down-button {{
+    width: 0;
+    height: 0;
+    border: none;
+    background: none;
+}}
 SpinBox, QSpinBox {{
     background: {COLOR_BG_RAISED};
     color: {COLOR_TEXT};
@@ -263,6 +320,7 @@ class StringCard(QFrame):
         header.setStyleSheet(
             f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_LABEL}px; font-family: {FONT_FAMILY};"
         )
+        header.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(header)
 
         # 基本特征行
@@ -279,8 +337,10 @@ class StringCard(QFrame):
             col.setSpacing(2)
             lbl = QLabel(label)
             lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 10px; background: transparent;")
+            lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
             val = QLabel(value)
             val.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 13px; background: transparent;")
+            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
             col.addWidget(lbl)
             col.addWidget(val)
             wrap = QWidget()
@@ -405,25 +465,21 @@ class AnalysisInterface(QScrollArea):
             lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px; background: transparent;")
             chunk_layout.addWidget(lbl)
             spin = SpinBox(self)
+            spin.setObjectName("mainSpinBox")  # 标记为主页面 SpinBox（隐藏上下按钮）
             spin.setRange(1, 1024)
             spin.setValue(default)
             spin.setFixedWidth(80)
-            # I3 深色 SpinBox
+            # I3 深色 SpinBox，上下按钮由 GLOBAL_QSS 隐藏
             spin.setStyleSheet(
-                f"QSpinBox {{"
+                f"QSpinBox#mainSpinBox {{"
                 f"  background: {COLOR_BG_RAISED};"
                 f"  color: {COLOR_TEXT};"
                 f"  border: 1px solid {COLOR_BORDER};"
                 f"  border-radius: 4px;"
-                f"  padding: 4px 6px;"
+                f"  padding: 4px 8px;"
                 f"  selection-background-color: {COLOR_ACCENT};"
                 f"}}"
-                f"QSpinBox::up-button, QSpinBox::down-button {{"
-                f"  background: {COLOR_BG_RAISED};"
-                f"  border: none;"
-                f"  width: 16px;"
-                f"}}"
-                f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
+                f"QSpinBox#mainSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
             )
             setattr(self, attr_name, spin)
             chunk_layout.addWidget(spin)
