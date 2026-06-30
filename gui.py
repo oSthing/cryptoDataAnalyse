@@ -9,18 +9,21 @@
 - B2 模式徽章：透明描边
 - P1 进度条：蓝色细线 4px
 - TY2 排版：宽松 + 中字号
+
+关键修复：使用 QApplication.setStyleSheet 全局应用 QSS，
+确保 qfluentwidgets 主题覆盖不掉我们的样式。
 """
 from pathlib import Path
 from typing import List, Optional
 from PyQt5.QtCore import Qt, QThread
-from PyQt5.QtGui import QFont, QTextCursor
+from PyQt5.QtGui import QFont, QPalette, QColor, QTextCursor
 from PyQt5.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QTextEdit,
-    QVBoxLayout, QWidget, QCheckBox, QSizePolicy,
+    QVBoxLayout, QWidget, QCheckBox,
 )
 from qfluentwidgets import (
     FluentWindow, PushButton, PrimaryPushButton, ProgressBar, SpinBox,
-    InfoBar, FluentIcon as FIF, SubtitleLabel, BodyLabel,
+    InfoBar, setTheme, Theme, FluentIcon as FIF, setThemeColor,
 )
 
 import config
@@ -30,7 +33,7 @@ from analyzer.chunking import ChunkingConfig
 from exporters import to_json, to_markdown
 
 
-# ===== 样式常量（Y2 排版 + A1 主色）=====
+# ===== 样式常量（A1 主色 + TY2 排版）=====
 COLOR_BG = "#202020"
 COLOR_BG_RAISED = "#2b2b2b"
 COLOR_BORDER = "#3a3a3a"
@@ -59,50 +62,101 @@ GROUP_RADIUS = 8
 BADGE_RADIUS = 3
 BUTTON_RADIUS = 6
 
-# 全局 QSS：暗色 + 透出 Fluent 主题
-GLOBAL_QSS = """
-QWidget { color: white; background: transparent; }
-QLabel { color: white; background: transparent; }
-QCheckBox { color: white; background: transparent; spacing: 6px; }
-QCheckBox::indicator {
+# 全局 QSS：暗色 + 强制深色背景
+# 注意：使用 QApplication.setStyleSheet 而非 widget.setStyleSheet，
+# 避免 qfluentwidgets 主题覆盖。
+GLOBAL_QSS = f"""
+QWidget {{
+    color: {COLOR_TEXT};
+    background-color: {COLOR_BG};
+}}
+QLabel {{
+    color: {COLOR_TEXT};
+    background: transparent;
+}}
+QCheckBox {{
+    color: {COLOR_TEXT};
+    background: transparent;
+    spacing: 6px;
+}}
+QCheckBox::indicator {{
     width: 14px; height: 14px;
-    background: #2b2b2b;
-    border: 1px solid #4cc2ff;
+    background: {COLOR_BG_RAISED};
+    border: 1px solid {COLOR_CYAN};
     border-radius: 2px;
-}
-QCheckBox::indicator:checked { background: #4cc2ff; }
-QScrollArea, QWidget#view { background: transparent; border: none; }
-QTextEdit {
-    background-color: #2b2b2b;
-    color: white;
+}}
+QCheckBox::indicator:checked {{ background: {COLOR_CYAN}; }}
+QScrollArea, QWidget#view {{
+    background-color: {COLOR_BG};
     border: none;
+}}
+QTextEdit, QPlainTextEdit {{
+    background-color: {COLOR_BG_RAISED};
+    color: {COLOR_TEXT};
+    border: 1px solid {COLOR_BORDER};
     border-radius: 4px;
     padding: 8px;
-    selection-background-color: #0078d7;
-    selection-color: white;
-}
-QTextEdit:focus { border: 1px solid #0078d7; }
-SpinBox { background: transparent; border: none; }
-SpinBox QLineEdit {
-    background-color: #2b2b2b;
-    color: white;
-    border: 1px solid #3a3a3a;
+    selection-background-color: {COLOR_ACCENT};
+    selection-color: {COLOR_TEXT};
+}}
+QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {COLOR_ACCENT}; }}
+SpinBox, QSpinBox {{
+    background: {COLOR_BG_RAISED};
+    color: {COLOR_TEXT};
+    border: 1px solid {COLOR_BORDER};
     border-radius: 4px;
+    padding: 2px;
+}}
+SpinBox:focus, QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}
+SpinBox QLineEdit, QSpinBox QLineEdit {{
+    background-color: {COLOR_BG_RAISED};
+    color: {COLOR_TEXT};
+    border: none;
     padding: 4px 6px;
-}
-SpinBox QLineEdit:focus { border: 1px solid #0078d7; }
-QProgressBar {
-    background: #2b2b2b;
+}}
+QProgressBar {{
+    background: {COLOR_BG_RAISED};
     border: none;
     height: 4px;
     border-radius: 2px;
     text-align: center;
     color: transparent;
-}
-QProgressBar::chunk {
-    background: #0078d7;
+}}
+QProgressBar::chunk {{
+    background: {COLOR_ACCENT};
     border-radius: 2px;
-}
+}}
+QPushButton {{
+    background-color: {COLOR_BTN_SECONDARY};
+    color: {COLOR_TEXT};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: {BUTTON_RADIUS}px;
+    padding: 8px 18px;
+    font-family: {FONT_FAMILY};
+}}
+QPushButton:hover {{ background-color: #4a4a4a; }}
+QPushButton:pressed {{ background-color: #2a2a2a; }}
+QPushButton:disabled {{ color: #666; background: #2a2a2a; }}
+PrimaryPushButton {{
+    background-color: {COLOR_ACCENT};
+    color: {COLOR_TEXT};
+    border: 1px solid {COLOR_ACCENT};
+    border-radius: {BUTTON_RADIUS}px;
+    padding: 8px 18px;
+    font-family: {FONT_FAMILY};
+    font-weight: 500;
+}}
+PrimaryPushButton:hover {{ background-color: #1a86d9; }}
+PrimaryPushButton:pressed {{ background-color: #006bbd; }}
+PrimaryPushButton:disabled {{ background: #2a4a6a; color: #888; }}
+QFrame {{
+    background-color: rgba(255, 255, 255, 0.05);
+    border: none;
+}}
+QStatusBar {{
+    background: {COLOR_BG};
+    color: {COLOR_TEXT};
+}}
 """
 
 
@@ -123,6 +177,34 @@ def make_badge(text: str, color: str) -> QLabel:
     return badge
 
 
+def style_button(btn, is_primary: bool = False):
+    """B3 圆角大按钮：覆盖 qfluentwidgets 默认浅色 QSS。"""
+    if is_primary:
+        bg = COLOR_ACCENT
+        bg_hover = "#1a86d9"
+        bg_pressed = "#006bbd"
+        border = COLOR_ACCENT
+    else:
+        bg = COLOR_BTN_SECONDARY
+        bg_hover = "#4a4a4a"
+        bg_pressed = "#1a1a1a"
+        border = COLOR_BORDER
+    btn.setStyleSheet(
+        f"QPushButton {{"
+        f"  color: {COLOR_TEXT};"
+        f"  background: {bg};"
+        f"  border: 1px solid {border};"
+        f"  border-radius: {BUTTON_RADIUS}px;"
+        f"  padding: 8px 18px;"
+        f"  font-family: {FONT_FAMILY};"
+        f"  font-weight: 500;"
+        f"}}"
+        f"QPushButton:hover {{ background: {bg_hover}; }}"
+        f"QPushButton:pressed {{ background: {bg_pressed}; }}"
+        f"QPushButton:disabled {{ color: #666; background: #2a2a2a; }}"
+    )
+
+
 def make_group_frame() -> QFrame:
     """T2 分组卡片：半透明白背景。"""
     frame = QFrame()
@@ -131,9 +213,31 @@ def make_group_frame() -> QFrame:
         f"  background: rgba(255, 255, 255, 0.05);"
         f"  border-radius: {GROUP_RADIUS}px;"
         f"  padding: 12px;"
+        f"  border: none;"
         f"}}"
     )
     return frame
+
+
+def set_dark_palette(app):
+    """强制设置 QApplication 调色板为暗色，覆盖 qfluentwidgets 默认浅色。"""
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(COLOR_BG))
+    palette.setColor(QPalette.WindowText, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.Base, QColor(COLOR_BG_RAISED))
+    palette.setColor(QPalette.AlternateBase, QColor(COLOR_BG))
+    palette.setColor(QPalette.ToolTipBase, QColor(COLOR_BG_RAISED))
+    palette.setColor(QPalette.ToolTipText, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.Text, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.Button, QColor(COLOR_BG_RAISED))
+    palette.setColor(QPalette.ButtonText, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.BrightText, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.Link, QColor(COLOR_ACCENT))
+    palette.setColor(QPalette.Highlight, QColor(COLOR_ACCENT))
+    palette.setColor(QPalette.HighlightedText, QColor(COLOR_TEXT))
+    palette.setColor(QPalette.Disabled, QPalette.Text, QColor("#666666"))
+    palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#666666"))
+    app.setPalette(palette)
 
 
 class StringCard(QFrame):
@@ -146,6 +250,7 @@ class StringCard(QFrame):
             f"  background: rgba(255, 255, 255, 0.05);"
             f"  border-radius: {GROUP_RADIUS}px;"
             f"  padding: 12px;"
+            f"  border: none;"
             f"}}"
         )
         layout = QVBoxLayout(self)
@@ -163,20 +268,19 @@ class StringCard(QFrame):
         # 基本特征行
         features_layout = QHBoxLayout()
         features_layout.setSpacing(16)
+        cc = basic_features.get("char_classes", {}) if isinstance(basic_features, dict) else {}
         for label, key in [("长度", "length"), ("唯一字符", "unique_chars"),
-                            ("大写", None), ("小写", None), ("数字", None)]:
-            if key:
-                value = str(basic_features.get(key, 0))
+                            ("大写", "upper"), ("小写", "lower"), ("数字", "digit")]:
+            if key in ("upper", "lower", "digit"):
+                value = str(cc.get(key, 0))
             else:
-                cc = basic_features.get("char_classes", {})
-                cn_map = {"大写": "upper", "小写": "lower", "数字": "digit"}
-                value = str(cc.get(cn_map[label], 0))
+                value = str(basic_features.get(key, 0))
             col = QVBoxLayout()
             col.setSpacing(2)
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 10px;")
+            lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 10px; background: transparent;")
             val = QLabel(value)
-            val.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 13px;")
+            val.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 13px; background: transparent;")
             col.addWidget(lbl)
             col.addWidget(val)
             wrap = QWidget()
@@ -192,7 +296,6 @@ class StringCard(QFrame):
             badges_layout = QHBoxLayout()
             badges_layout.setSpacing(4)
             badges_layout.setContentsMargins(0, 0, 0, 0)
-            # 颜色映射
             color_map = {
                 "Hex": COLOR_CYAN, "Base64": COLOR_GREEN, "Base32": COLOR_GREEN, "Base58": COLOR_GREEN,
                 "UUID": COLOR_CYAN, "MD5": COLOR_PURPLE, "SHA-1": COLOR_PURPLE, "SHA-224": COLOR_PURPLE,
@@ -241,13 +344,14 @@ class AnalysisInterface(QScrollArea):
         self.title_label = QLabel("字符串分析", self)
         self.title_label.setStyleSheet(
             f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
-            f" font-weight: 500; font-family: {FONT_FAMILY};"
+            f" font-weight: 500; font-family: {FONT_FAMILY}; background: transparent;"
         )
         self.layout.addWidget(self.title_label)
 
         self.subtitle_label = QLabel("基本特征", self)
         self.subtitle_label.setStyleSheet(
-            f"color: {COLOR_CYAN}; font-size: {FONT_SIZE_SUBTITLE}px; font-family: {FONT_FAMILY};"
+            f"color: {COLOR_CYAN}; font-size: {FONT_SIZE_SUBTITLE}px;"
+            f" font-family: {FONT_FAMILY}; background: transparent;"
         )
         self.layout.addWidget(self.subtitle_label)
 
@@ -269,6 +373,19 @@ class AnalysisInterface(QScrollArea):
         font = QFont(FONT_MONO)
         font.setPointSize(11)
         self.input_text.setFont(font)
+        # I3 深色输入框：直接 setStyleSheet 覆盖
+        self.input_text.setStyleSheet(
+            f"QTextEdit {{"
+            f"  background: {COLOR_BG_RAISED};"
+            f"  color: {COLOR_TEXT};"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 4px;"
+            f"  padding: 8px;"
+            f"  selection-background-color: {COLOR_ACCENT};"
+            f"  selection-color: {COLOR_TEXT};"
+            f"}}"
+            f"QTextEdit:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
+        )
         input_layout.addWidget(self.input_text)
 
         self.hex_checkbox = QCheckBox("输入是 Hex 字符串（按字节切分）", self)
@@ -285,12 +402,29 @@ class AnalysisInterface(QScrollArea):
             ("步长", "window_step_spin", config.DEFAULT_WINDOW_STEP),
         ]:
             lbl = QLabel(label, self)
-            lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px;")
+            lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px; background: transparent;")
             chunk_layout.addWidget(lbl)
             spin = SpinBox(self)
             spin.setRange(1, 1024)
             spin.setValue(default)
             spin.setFixedWidth(80)
+            # I3 深色 SpinBox
+            spin.setStyleSheet(
+                f"QSpinBox {{"
+                f"  background: {COLOR_BG_RAISED};"
+                f"  color: {COLOR_TEXT};"
+                f"  border: 1px solid {COLOR_BORDER};"
+                f"  border-radius: 4px;"
+                f"  padding: 4px 6px;"
+                f"  selection-background-color: {COLOR_ACCENT};"
+                f"}}"
+                f"QSpinBox::up-button, QSpinBox::down-button {{"
+                f"  background: {COLOR_BG_RAISED};"
+                f"  border: none;"
+                f"  width: 16px;"
+                f"}}"
+                f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
+            )
             setattr(self, attr_name, spin)
             chunk_layout.addWidget(spin)
             chunk_layout.addSpacing(12)
@@ -313,12 +447,18 @@ class AnalysisInterface(QScrollArea):
             btn.setMinimumHeight(36)
             button_layout.addWidget(btn)
         button_layout.addStretch()
+        # 覆盖 qfluentwidgets 内部 QSS，应用深色 B3 风格
+        style_button(self.btn_start, is_primary=True)
+        for btn in [self.btn_stop, self.btn_import, self.btn_clear,
+                     self.btn_export_json, self.btn_export_md]:
+            style_button(btn, is_primary=False)
         self.layout.addLayout(button_layout)
 
         # 进度条（P1 蓝色细线）
         self.progress_label = QLabel("", self)
         self.progress_label.setStyleSheet(
-            f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_LABEL}px; font-family: {FONT_FAMILY};"
+            f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_LABEL}px;"
+            f" font-family: {FONT_FAMILY}; background: transparent;"
         )
         self.layout.addWidget(self.progress_label)
 
@@ -332,7 +472,8 @@ class AnalysisInterface(QScrollArea):
         # 结果区
         self.result_title = QLabel("分析结果", self)
         self.result_title.setStyleSheet(
-            f"color: {COLOR_TEXT}; font-size: 14px; font-weight: 500; margin-top: 6px;"
+            f"color: {COLOR_TEXT}; font-size: 14px; font-weight: 500;"
+            f" margin-top: 6px; background: transparent;"
         )
         self.layout.addWidget(self.result_title)
 
@@ -346,22 +487,20 @@ class AnalysisInterface(QScrollArea):
         # 状态
         self.status_label = QLabel("就绪", self)
         self.status_label.setStyleSheet(
-            f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_LABEL}px; font-family: {FONT_FAMILY};"
+            f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_LABEL}px; font-family: {FONT_FAMILY}; background: transparent;"
         )
         self.layout.addWidget(self.status_label)
 
         self.layout.addStretch()
 
     def clear_results(self):
-        """清除结果卡片。"""
-        while self.result_layout.count() > 1:  # 保留最后的 stretch
+        while self.result_layout.count() > 1:
             item = self.result_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
 
     def populate_results(self, basic_features_list, patterns_list, raw_inputs):
-        """填充结果卡片。"""
         self.clear_results()
         for i, (bf, pats, raw) in enumerate(zip(basic_features_list, patterns_list, raw_inputs)):
             bf_dict = bf.__dict__ if hasattr(bf, "__dict__") else bf
@@ -375,15 +514,12 @@ class MainWindow(FluentWindow):
         self.setWindowTitle("数据分析工具")
         self.resize(1200, 800)
 
-        # 应用全局 QSS
-        self.setStyleSheet(GLOBAL_QSS)
-
         self.worker_thread: Optional[QThread] = None
         self.worker: Optional[AnalyzerWorker] = None
         self.current_result: Optional[dict] = None
         self.history = History(config.HISTORY_FILE, max_entries=config.HISTORY_MAX_ENTRIES)
 
-        # 5 个 Tab：基本特征 / 公共子串 / 分块 / 差异比对 / 日志
+        # 5 个 Tab
         self.tab_basic = self._create_basic_tab()
         self.tab_common = self._create_placeholder_tab("公共子串 / 子序列")
         self.tab_chunk = self._create_placeholder_tab("分块分析")
@@ -396,7 +532,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.tab_diff, FIF.SEND, "差异比对")
         self.addSubInterface(self.tab_log, FIF.DOCUMENT, "日志")
 
-        # 暴露属性给测试（指向基本特征 Tab）
+        # 暴露属性给测试
         self.input_text = self.tab_basic.input_text
         self.hex_checkbox = self.tab_basic.hex_checkbox
         self.chunk_size_spin = self.tab_basic.chunk_size_spin
@@ -437,7 +573,8 @@ class MainWindow(FluentWindow):
 
         title = QLabel("运行日志", widget)
         title.setStyleSheet(
-            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px; font-weight: 500;"
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
         )
         layout.addWidget(title)
 
@@ -450,10 +587,20 @@ class MainWindow(FluentWindow):
         font.setPointSize(11)
         widget.log_text.setFont(font)
         widget.log_text.setMinimumHeight(500)
+        # I3 深色日志区
+        widget.log_text.setStyleSheet(
+            f"QTextEdit {{"
+            f"  background: {COLOR_BG_RAISED};"
+            f"  color: {COLOR_TEXT_DIM};"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 4px;"
+            f"  padding: 8px;"
+            f"  selection-background-color: {COLOR_ACCENT};"
+            f"}}"
+        )
         log_layout.addWidget(widget.log_text)
         layout.addWidget(log_group)
 
-        # 暴露属性到主窗口（覆盖之前的 setattr）
         self.log_text = widget.log_text
         return widget
 
@@ -465,12 +612,14 @@ class MainWindow(FluentWindow):
         layout.setSpacing(10)
         title_label = QLabel(title, widget)
         title_label.setStyleSheet(
-            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px; font-weight: 500;"
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
         )
         layout.addWidget(title_label)
         info = QLabel("(结果展示区 - 后续任务实现)", widget)
         info.setStyleSheet(
             f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
+            f" background: transparent;"
         )
         layout.addWidget(info)
         layout.addStretch()
@@ -590,7 +739,6 @@ class MainWindow(FluentWindow):
         self.history.add(result['inputs'], result)
         self._append_log("分析完成，已保存到历史记录")
 
-        # 填充结果卡片
         basic = result.get("basic_features", [])
         patterns = result.get("patterns", [])
         inputs = result.get("inputs", [])

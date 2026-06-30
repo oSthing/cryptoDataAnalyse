@@ -2,7 +2,7 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from qfluentwidgets import setTheme, Theme, qconfig
-from gui import MainWindow
+from gui import MainWindow, set_dark_palette, GLOBAL_QSS
 import config
 
 
@@ -19,6 +19,10 @@ if __name__ == '__main__':
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     setTheme(Theme.DARK)
+    # 强制暗色调色板（覆盖 qfluentwidgets 浅色默认）
+    set_dark_palette(app)
+    # 应用全局 QSS（确保深色背景生效）
+    app.setStyleSheet(GLOBAL_QSS)
 
     window = MainWindow()
     window.show()
