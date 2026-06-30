@@ -1,6 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 from qfluentwidgets import setTheme, Theme, qconfig
 from gui import MainWindow, set_dark_palette, GLOBAL_QSS
 import config
@@ -19,6 +20,11 @@ if __name__ == '__main__':
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     setTheme(Theme.DARK)
+
+    # 设置全局默认字体（清晰、支持中文）
+    default_font = QFont("Microsoft YaHei UI", 10)
+    app.setFont(default_font)
+
     # 强制暗色调色板（覆盖 qfluentwidgets 浅色默认）
     set_dark_palette(app)
     # 应用全局 QSS（确保深色背景生效）

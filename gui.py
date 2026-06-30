@@ -49,8 +49,8 @@ COLOR_ORANGE = "#ff8c00"
 COLOR_RED = "#ff6b6b"
 COLOR_YELLOW = "#f7b500"
 
-FONT_FAMILY = "Segoe UI"
-FONT_MONO = "Consolas"
+FONT_FAMILY = "Microsoft YaHei UI"  # 跨 Windows 版本通用，且支持中文
+FONT_MONO = "Consolas"  # 等宽字体用于输入/日志；Windows 自带
 
 FONT_SIZE_TITLE = 18
 FONT_SIZE_SUBTITLE = 13
@@ -724,7 +724,7 @@ class MainWindow(FluentWindow):
 
     def _on_progress(self, current: int, total: int, task_name: str):
         self.progress_bar.setValue(current)
-        self.progress_label.setText(f"[{current}/{total}] {task_name}")
+        self.tab_basic.progress_label.setText(f"[{current}/{total}] {task_name}")
         self.status_label.setText(f"[{current}/{total}] {task_name}")
 
     def _on_status_changed(self, status: str):
@@ -732,7 +732,7 @@ class MainWindow(FluentWindow):
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
             self.status_label.setText("完成")
-            self.progress_label.setText("")
+            self.tab_basic.progress_label.setText("")
 
     def _on_analysis_finished(self, result: dict):
         self.current_result = result
