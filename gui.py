@@ -150,13 +150,6 @@ QTextEdit, QPlainTextEdit {{
     selection-color: {COLOR_TEXT};
 }}
 QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {COLOR_ACCENT}; }}
-/* 隐藏主页面 SpinBox 的上下按钮 */
-QSpinBox#mainSpinBox::up-button, QSpinBox#mainSpinBox::down-button {{
-    width: 0;
-    height: 0;
-    border: none;
-    background: none;
-}}
 SpinBox, QSpinBox {{
     background: {COLOR_BG_RAISED};
     color: {COLOR_TEXT};
@@ -232,6 +225,15 @@ def make_badge(text: str, color: str) -> QLabel:
         f"}}"
     )
     return badge
+
+
+def make_selectable_label(text: str, style: str = "") -> QLabel:
+    """创建文字可选中的 QLabel。"""
+    lbl = QLabel(text)
+    if style:
+        lbl.setStyleSheet(style)
+    lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    return lbl
 
 
 def style_button(btn, is_primary: bool = False):
@@ -465,21 +467,25 @@ class AnalysisInterface(QScrollArea):
             lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: {FONT_SIZE_BODY}px; background: transparent;")
             chunk_layout.addWidget(lbl)
             spin = SpinBox(self)
-            spin.setObjectName("mainSpinBox")  # 标记为主页面 SpinBox（隐藏上下按钮）
             spin.setRange(1, 1024)
             spin.setValue(default)
             spin.setFixedWidth(80)
-            # I3 深色 SpinBox，上下按钮由 GLOBAL_QSS 隐藏
+            # I3 深色 SpinBox
             spin.setStyleSheet(
-                f"QSpinBox#mainSpinBox {{"
+                f"QSpinBox {{"
                 f"  background: {COLOR_BG_RAISED};"
                 f"  color: {COLOR_TEXT};"
                 f"  border: 1px solid {COLOR_BORDER};"
                 f"  border-radius: 4px;"
-                f"  padding: 4px 8px;"
+                f"  padding: 4px 6px;"
                 f"  selection-background-color: {COLOR_ACCENT};"
                 f"}}"
-                f"QSpinBox#mainSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
+                f"QSpinBox::up-button, QSpinBox::down-button {{"
+                f"  background: {COLOR_BG_RAISED};"
+                f"  border: none;"
+                f"  width: 16px;"
+                f"}}"
+                f"QSpinBox:focus {{ border: 1px solid {COLOR_ACCENT}; }}"
             )
             setattr(self, attr_name, spin)
             chunk_layout.addWidget(spin)
@@ -717,11 +723,10 @@ class MainWindow(FluentWindow):
             multi_card = self._make_info_card(f"多串公共子串（{len(multi)} 个）", "")
             for sub, positions in multi:
                 pos_str = ", ".join(f"串{i+1}@{p}" for i, p in enumerate(positions))
-                line = QLabel(f"  · `{sub}` (位置: {pos_str})", multi_card)
-                line.setStyleSheet(
-                    f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
-                    f" font-size: 12px; background: transparent; padding: 2px 0;"
-                )
+                style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                         f" font-size: 12px; background: transparent; padding: 2px 0;")
+                line = make_selectable_label(f"  · `{sub}` (位置: {pos_str})", style)
+                line.setParent(multi_card)
                 multi_card.layout().addWidget(line)
             layout.addWidget(multi_card)
 
@@ -735,33 +740,31 @@ class MainWindow(FluentWindow):
                     sub_strs = ", ".join(f"`{s[0]}`" for s in subs[:5])
                     if len(subs) > 5:
                         sub_strs += f" ... +{len(subs)-5} more"
-                    line = QLabel(
+                    style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                             f" font-size: 12px; background: transparent; padding: 2px 0;")
+                    line = make_selectable_label(
                         f"  串{int(i)+1} ↔ 串{int(j)+1}: {sub_strs}",
-                        pair_card
+                        style
                     )
-                    line.setStyleSheet(
-                        f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
-                        f" font-size: 12px; background: transparent; padding: 2px 0;"
-                    )
+                    line.setParent(pair_card)
                     pair_card.layout().addWidget(line)
                 else:
-                    line = QLabel(
+                    style = (f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                             f" font-size: 12px; background: transparent; padding: 2px 0;")
+                    line = make_selectable_label(
                         f"  串{int(i)+1} ↔ 串{int(j)+1}: (无公共子串)",
-                        pair_card
+                        style
                     )
-                    line.setStyleSheet(
-                        f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
-                        f" font-size: 12px; background: transparent; padding: 2px 0;"
-                    )
+                    line.setParent(pair_card)
                     pair_card.layout().addWidget(line)
             layout.addWidget(pair_card)
 
         if not (prefix > 0 or suffix > 0 or multi or pairwise):
-            empty = QLabel("(无公共子串数据)", widget)
-            empty.setStyleSheet(
-                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
-                f" background: transparent;"
+            empty = make_selectable_label(
+                "(无公共子串数据)",
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
             )
+            empty.setParent(widget)
             layout.addWidget(empty)
 
     def _create_chunk_tab(self) -> QWidget:
@@ -808,11 +811,11 @@ class MainWindow(FluentWindow):
         duplicates = chunk_data.get("duplicates", {})
 
         if not chunks_by_idx:
-            empty = QLabel("(无分块数据)", self.tab_chunk)
-            empty.setStyleSheet(
-                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
-                f" background: transparent;"
+            empty = make_selectable_label(
+                "(无分块数据)",
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
             )
+            empty.setParent(self.tab_chunk)
             layout.addWidget(empty)
             return
 
@@ -831,23 +834,24 @@ class MainWindow(FluentWindow):
             for chunk in chunks[:50]:  # 限制显示前 50 个
                 dup_badge = " [重复]" if chunk.get("is_duplicate") else ""
                 content_preview = chunk['content'] if len(chunk['content']) <= 40 else chunk['content'][:40] + "..."
-                row = QLabel(
-                    f"  #{chunk['index']:3d}  `{content_preview}`  "
-                    f"SHA256: {chunk['sha256'][:16]}...{dup_badge}",
-                    card
-                )
                 style = f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
                 if chunk.get("is_duplicate"):
                     style += f" color: {COLOR_ORANGE};"
                 style += " font-size: 11px; background: transparent; padding: 1px 0;"
-                row.setStyleSheet(style)
+                row = make_selectable_label(
+                    f"  #{chunk['index']:3d}  `{content_preview}`  "
+                    f"SHA256: {chunk['sha256'][:16]}...{dup_badge}",
+                    style
+                )
+                row.setParent(card)
                 card.layout().addWidget(row)
             if len(chunks) > 50:
-                more = QLabel(f"  ... 还有 {len(chunks)-50} 个分块", card)
-                more.setStyleSheet(
+                more = make_selectable_label(
+                    f"  ... 还有 {len(chunks)-50} 个分块",
                     f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
                     f" font-size: 11px; background: transparent;"
                 )
+                more.setParent(card)
                 card.layout().addWidget(more)
 
             layout.addWidget(card)
@@ -897,11 +901,11 @@ class MainWindow(FluentWindow):
         jaccard = diff_data.get("jaccard", {})
 
         if not hamming:
-            empty = QLabel("(无差异比对数据)", self.tab_diff)
-            empty.setStyleSheet(
-                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px;"
-                f" background: transparent;"
+            empty = make_selectable_label(
+                "(无差异比对数据)",
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
             )
+            empty.setParent(self.tab_diff)
             layout.addWidget(empty)
             return
 
@@ -925,16 +929,14 @@ class MainWindow(FluentWindow):
                 f"串{i+1} ↔ 串{j+1}",
                 f"  `{preview_i}` ↔ `{preview_j}`"
             )
-            metrics = QLabel(
+            metrics = make_selectable_label(
                 f"  汉明距离: {h_str}    "
                 f"编辑距离: {l_val}    "
                 f"Jaccard: {j_str}",
-                card
-            )
-            metrics.setStyleSheet(
                 f"color: {COLOR_CYAN}; font-family: {FONT_MONO};"
                 f" font-size: 12px; background: transparent; padding: 4px 0;"
             )
+            metrics.setParent(card)
             card.layout().addWidget(metrics)
             layout.addWidget(card)
 
