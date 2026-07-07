@@ -611,17 +611,19 @@ class MainWindow(FluentWindow):
         self.current_result: Optional[dict] = None
         self.history = History(config.HISTORY_FILE, max_entries=config.HISTORY_MAX_ENTRIES)
 
-        # 5 个 Tab
+        # 6 个 Tab
         self.tab_basic = self._create_basic_tab()
         self.tab_common = self._create_common_substring_tab()
         self.tab_chunk = self._create_chunk_tab()
         self.tab_diff = self._create_diff_tab()
+        self.tab_asn1 = self._create_asn1_tab()
         self.tab_log = self._create_log_tab()
 
         self.addSubInterface(self.tab_basic, FIF.SEARCH, "基本特征")
         self.addSubInterface(self.tab_common, FIF.LINK, "公共子串")
         self.addSubInterface(self.tab_chunk, FIF.CUT, "分块分析")
         self.addSubInterface(self.tab_diff, FIF.SEND, "差异比对")
+        self.addSubInterface(self.tab_asn1, FIF.CODE, "ASN.1 解析")
         self.addSubInterface(self.tab_log, FIF.DOCUMENT, "日志")
 
         # 暴露属性给测试
@@ -650,6 +652,108 @@ class MainWindow(FluentWindow):
 
     def _create_basic_tab(self) -> AnalysisInterface:
         return AnalysisInterface(self)
+
+    def _create_asn1_tab(self) -> QWidget:
+        """Tab: ASN.1 / DER 完整解析。"""
+        widget = QScrollArea(self)
+        widget.setObjectName("Asn1Interface")
+        view = QWidget(widget)
+        view.setObjectName("view")
+        layout = QVBoxLayout(view)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        widget.setWidget(view)
+        widget.setWidgetResizable(True)
+        widget.setStyleSheet("QScrollArea, QWidget#view { background: transparent; }")
+
+        title = QLabel("ASN.1 解析", widget)
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: {FONT_SIZE_TITLE}px;"
+            f" font-weight: 500; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        widget.content_layout = QVBoxLayout()
+        widget.content_layout.setSpacing(10)
+        content_wrap = QWidget(widget)
+        content_wrap.setLayout(widget.content_layout)
+        layout.addWidget(content_wrap)
+        layout.addStretch()
+
+        return widget
+
+    def _populate_asn1_tab(self, asn1_results: list, raw_inputs: list):
+        """填充 ASN.1 Tab 内容：每条输入的完整解析树。"""
+        if not hasattr(self.tab_asn1, 'content_layout'):
+            return
+        layout = self.tab_asn1.content_layout
+        # 清空
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not asn1_results:
+            empty = make_selectable_label(
+                "(无 ASN.1 数据)",
+                f"color: {COLOR_TEXT_MUTED}; font-size: {FONT_SIZE_BODY}px; background: transparent;"
+            )
+            empty.setParent(self.tab_asn1)
+            layout.addWidget(empty)
+            return
+
+        for entry in asn1_results:
+            idx = entry.get("index", 0)
+            raw = raw_inputs[idx] if idx < len(raw_inputs) else ""
+            preview = raw if len(raw) <= 50 else raw[:50] + "..."
+
+            if not entry.get("parsed"):
+                not_parsed = make_selectable_label(
+                    f"串{idx+1} · {preview}",
+                    f"  非 ASN.1 格式（无法解析）"
+                )
+                not_parsed.setStyleSheet(
+                    f"color: {COLOR_TEXT_MUTED}; font-size: 12px; background: transparent;"
+                )
+                layout.addWidget(not_parsed)
+                continue
+
+            summary = entry.get("summary", {})
+            tree_lines = entry.get("tree", [])
+
+            # 卡片标题
+            card_title_text = (f"串{idx+1} · {preview}  ·  根 {summary.get('root_tag', '?')}  ·  "
+                               f"OID {summary.get('oid_count', 0)} 个")
+            card = self._make_info_card(card_title_text, "")
+
+            # 摘要信息
+            oids_str = ", ".join(summary.get("oids", [])) or "(无)"
+            struct_str = ", ".join(summary.get("structure", [])) or "(简单)"
+            summary_text = f"OID 列表: {oids_str}\n结构: {struct_str}"
+            summary_label = make_selectable_label(
+                summary_text,
+                f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                f" font-size: 11px; background: transparent; padding: 4px 0;"
+            )
+            card.layout().addWidget(summary_label)
+
+            # 完整树
+            for line in tree_lines:
+                style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                         f" font-size: 11px; background: transparent; padding: 0;")
+                lbl = make_selectable_label(line, style)
+                card.layout().addWidget(lbl)
+
+            if not tree_lines:
+                empty = make_selectable_label(
+                    "  (空树)",
+                    f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                    f" font-size: 11px; background: transparent;"
+                )
+                card.layout().addWidget(empty)
+
+            layout.addWidget(card)
 
     def _create_log_tab(self) -> QWidget:
         widget = QScrollArea(self)
@@ -1339,6 +1443,8 @@ class MainWindow(FluentWindow):
             self._populate_chunk_tab(result["chunking"], inputs)
         if "diff" in result:
             self._populate_diff_tab(result["diff"], inputs)
+        if "asn1" in result:
+            self._populate_asn1_tab(result["asn1"], inputs)
 
         if self.worker_thread:
             self.worker_thread.quit()
