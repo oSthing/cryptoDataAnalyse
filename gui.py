@@ -302,7 +302,8 @@ def set_dark_palette(app):
 class StringCard(QFrame):
     """单条字符串的分析结果卡片。"""
 
-    def __init__(self, index: int, raw: str, basic_features: dict, patterns: list, parent=None):
+    def __init__(self, index: int, raw: str, basic_features: dict, patterns: list,
+                 asn1_data: dict = None, parent=None):
         super().__init__(parent)
         self.setStyleSheet(
             f"QFrame {{"
@@ -386,6 +387,35 @@ class StringCard(QFrame):
             badges_wrap = QWidget()
             badges_wrap.setLayout(badges_layout)
             layout.addWidget(badges_wrap)
+
+        # ASN.1 解析摘要
+        if asn1_data and asn1_data.get("parsed"):
+            summary = asn1_data.get("summary", {})
+            tree_lines = asn1_data.get("tree", [])
+
+            # 摘要头
+            asn1_title = make_selectable_label(
+                f"ASN.1 解析 · 根类型 {summary.get('root_tag', '?')} · "
+                f"OID {summary.get('oid_count', 0)} 个 · "
+                f"结构 {', '.join(summary.get('structure', [])[:3])}",
+                f"color: {COLOR_CYAN}; font-size: 12px; font-weight: 500;"
+                f" background: transparent; padding: 4px 0;"
+            )
+            layout.addWidget(asn1_title)
+
+            # 树（限制前 15 行）
+            for line in tree_lines[:15]:
+                style = (f"color: {COLOR_TEXT_DIM}; font-family: {FONT_MONO};"
+                         f" font-size: 11px; background: transparent; padding: 0;")
+                lbl = make_selectable_label(line, style)
+                layout.addWidget(lbl)
+            if len(tree_lines) > 15:
+                more = make_selectable_label(
+                    f"  ... 还有 {len(tree_lines) - 15} 行",
+                    f"color: {COLOR_TEXT_MUTED}; font-style: italic;"
+                    f" font-size: 11px; background: transparent;"
+                )
+                layout.addWidget(more)
 
 
 class AnalysisInterface(QScrollArea):
@@ -558,11 +588,15 @@ class AnalysisInterface(QScrollArea):
             if widget:
                 widget.deleteLater()
 
-    def populate_results(self, basic_features_list, patterns_list, raw_inputs):
+    def populate_results(self, basic_features_list, patterns_list, raw_inputs,
+                          asn1_results=None):
         self.clear_results()
+        if asn1_results is None:
+            asn1_results = [None] * len(basic_features_list)
         for i, (bf, pats, raw) in enumerate(zip(basic_features_list, patterns_list, raw_inputs)):
             bf_dict = bf.__dict__ if hasattr(bf, "__dict__") else bf
-            card = StringCard(i, raw, bf_dict, pats, self)
+            asn1_data = asn1_results[i] if i < len(asn1_results) else None
+            card = StringCard(i, raw, bf_dict, pats, asn1_data=asn1_data, parent=self)
             self.result_layout.insertWidget(self.result_layout.count() - 1, card)
 
 
@@ -1291,7 +1325,10 @@ class MainWindow(FluentWindow):
 
         # 填充各 Tab
         if basic and patterns and inputs:
-            self.tab_basic.populate_results(basic, patterns, inputs)
+            self.tab_basic.populate_results(
+                basic, patterns, inputs,
+                asn1_results=result.get("asn1", []),
+            )
         if "common_substring" in result:
             self._populate_common_substring_tab(
                 result["common_substring"],

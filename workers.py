@@ -13,6 +13,7 @@ from analyzer.periodicity import analyze as period_analyze
 from analyzer.bit_analysis import analyze as bit_analyze
 from analyzer.multi_string import analyze as ms_analyze
 from analyzer.repeat_substring import analyze as repeat_analyze
+from analyzer.asn1_parser import parse_string as asn1_parse_string, format_tree as asn1_format_tree, summarize as asn1_summarize
 
 
 class AnalyzerWorker(QObject):
@@ -58,6 +59,32 @@ class AnalyzerWorker(QObject):
             self.log_msg.emit("[2/8] 模式识别...")
             self.progress.emit(2, total_steps, "模式识别")
             result["patterns"] = detect_all(self.strings)
+
+            # 2.5 ASN.1 自动检测 + 解析
+            self.log_msg.emit("[2.5/8] ASN.1 自动检测...")
+            self.progress.emit(2, total_steps, "ASN.1 解析")
+            asn1_results = []
+            for idx, raw in enumerate(self.strings):
+                node = asn1_parse_string(raw)
+                if node is not None:
+                    lines = asn1_format_tree(node, max_lines=200)
+                    summary = asn1_summarize(node)
+                    asn1_results.append({
+                        "index": idx,
+                        "parsed": True,
+                        "root_tag": node.tag_name,
+                        "size": len(node.raw_value) + 2,  # 粗略估算
+                        "tree": lines,
+                        "summary": summary,
+                    })
+                else:
+                    asn1_results.append({
+                        "index": idx,
+                        "parsed": False,
+                        "tree": [],
+                        "summary": {},
+                    })
+            result["asn1"] = asn1_results
 
             # 3. 公共子串/子序列
             self._check_cancel()
