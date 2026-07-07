@@ -231,3 +231,54 @@ def test_parse_x509_serial():
     # INTEGER 0x1234 = 02 02 12 34
     node = parse_string("02021234")
     assert node.value == "4660"  # 0x1234
+
+
+def test_bit_string_returns_dict():
+    """BIT STRING 节点值是 dict（带 unused_bits / bytes / bit_count）。"""
+    # 03 04 06 6e 6d 80 = BIT STRING unused=6, bytes="6e 6d 80"
+    data = bytes.fromhex("0304066e6d80")
+    node = parse_asn1(data)
+    assert node.tag_name == "BIT STRING"
+    assert isinstance(node.value, dict)
+    assert node.value["unused_bits"] == 6
+    assert node.value["bytes"] == bytes.fromhex("6e6d80")
+    assert node.value["bit_count"] == 18  # 3*8 - 6
+
+
+def test_bit_string_format_tree_full():
+    """format_tree 完整显示 BIT STRING bytes（不截断）。"""
+    # 一个长 BIT STRING（128 字节 = 1024 位）
+    long_bytes = b"\xab" * 128
+    payload = b"\x00" + long_bytes  # unused=0
+    # tag=03, length=0x81 0x81 (long form 129 bytes), value=payload
+    der = b"\x03\x81\x81" + payload
+    hex_input = der.hex()
+    node = parse_string(hex_input)
+    lines = format_tree(node)
+    # 第一行应是 "BIT STRING (1024 bits, 未使用 0 bits, 128 bytes)"
+    first = lines[0]
+    assert "BIT STRING" in first
+    assert "1024 bits" in first
+    assert "128 bytes" in first
+    # 后续行应有完整内容（折行显示，跨多行）
+    joined = "".join(l.strip() for l in lines[1:])
+    # 完整内容应是 128 字节 = 256 个 'ab' 字符
+    assert joined == "ab" * 128
+
+
+def test_bit_string_format_tree_multiline():
+    """长 BIT STRING 应折行显示，每行 64 hex 字符。"""
+    long_bytes = b"\xcd" * 100
+    payload = b"\x00" + long_bytes
+    der = b"\x03\x81\x65" + payload
+    node = parse_asn1(bytes.fromhex(der.hex()))
+    lines = format_tree(node)
+    # 找所有数据行（包含 cd 的 hex）
+    data_lines = [l.strip() for l in lines if l.strip().startswith("cd")]
+    # 100 字节 = 200 hex 字符，应分 4 行（64+64+64+8）
+    assert len(data_lines) == 4
+    # 第一行 64 字符，第二行 64，第三行 64，第四行 8
+    assert len(data_lines[0]) == 64
+    assert len(data_lines[1]) == 64
+    assert len(data_lines[2]) == 64
+    assert len(data_lines[3]) == 8

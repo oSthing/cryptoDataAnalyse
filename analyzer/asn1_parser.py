@@ -212,12 +212,17 @@ def _format_value(node: ASN1Node) -> Any:
         if node.tag_number == 0x01:  # BOOLEAN
             return "TRUE" if raw and raw[-1] else "FALSE"
         if node.tag_number == 0x03:  # BIT STRING
-            # 首字节是未使用位数
+            # 首字节是"未使用位数"（最后一个字节的高位 unused bits 不算）
             if not raw:
-                return "(empty)"
+                return {"unused_bits": 0, "bytes": b"", "bit_count": 0}
             unused = raw[0]
-            bits = raw[1:]
-            return f"bits({len(bits) * 8 - unused} used): {bits.hex()}"
+            bit_bytes = raw[1:]
+            total_bits = max(0, len(bit_bytes) * 8 - unused)
+            return {
+                "unused_bits": unused,
+                "bytes": bit_bytes,
+                "bit_count": total_bits,
+            }
         if node.tag_number == 0x0C:  # UTF8String
             try:
                 return raw.decode('utf-8', errors='replace')
@@ -357,8 +362,13 @@ def parse_string(s: str, max_depth: int = 20) -> Optional[ASN1Node]:
         return None
 
 
-def format_tree(node: ASN1Node, indent: int = 0, max_lines: int = 200) -> List[str]:
-    """把 ASN1Node 渲染为可读字符串树。"""
+def format_tree(node: ASN1Node, indent: int = 0, max_lines: int = 200,
+               max_value_bytes: int = 0) -> List[str]:
+    """把 ASN1Node 渲染为可读字符串树。
+
+    max_value_bytes: 原子值的最大字节数（0 = 不截断）。
+    BIT STRING 节点会被拆为 3 行（unused_bits / bytes / bit_count）。
+    """
     lines: List[str] = []
     if len(lines) >= max_lines:
         lines.append("  " * indent + "... (truncated)")
@@ -370,16 +380,34 @@ def format_tree(node: ASN1Node, indent: int = 0, max_lines: int = 200) -> List[s
         lines.append(header)
         if isinstance(node.value, list):
             for child in node.value:
-                lines.extend(format_tree(child, indent + 1, max_lines))
+                lines.extend(format_tree(child, indent + 1, max_lines, max_value_bytes))
                 if len(lines) >= max_lines:
                     break
     else:
-        # 原子节点
-        if isinstance(node.value, str):
+        # BIT STRING 特殊处理：分多行展示
+        if (node.tag_class == "UNIVERSAL"
+                and node.tag_number == 0x03
+                and isinstance(node.value, dict)):
+            v = node.value
+            lines.append(f"{prefix}{node.tag_name} ({v['bit_count']} bits, "
+                         f"未使用 {v['unused_bits']} bits, {len(v['bytes'])} bytes)")
+            # 完整 hex（不截断）
+            if v['bytes']:
+                # 按每行 64 hex 字符折行
+                hex_str = v['bytes'].hex()
+                chunk_size = 64
+                for i in range(0, len(hex_str), chunk_size):
+                    sub = hex_str[i:i + chunk_size]
+                    lines.append(f"{prefix}  {sub}")
+        elif isinstance(node.value, str):
             val_str = node.value
-            if len(val_str) > 80:
-                val_str = val_str[:77] + "..."
+            if max_value_bytes > 0 and len(val_str) > max_value_bytes:
+                val_str = val_str[:max_value_bytes - 3] + "..."
             lines.append(f"{prefix}{node.tag_name} = {val_str}")
+        elif isinstance(node.value, dict):
+            # 其他 dict 类型（OCTET STRING 等）
+            for k, v in node.value.items():
+                lines.append(f"{prefix}{node.tag_name}.{k} = {v}")
         else:
             lines.append(f"{prefix}{node.tag_name} = (binary {node.length} bytes)")
 

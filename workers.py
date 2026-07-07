@@ -67,7 +67,7 @@ class AnalyzerWorker(QObject):
             for idx, raw in enumerate(self.strings):
                 node = asn1_parse_string(raw)
                 if node is not None:
-                    lines = asn1_format_tree(node, max_lines=200)
+                    lines = asn1_format_tree(node, max_lines=2000)
                     summary = asn1_summarize(node)
                     asn1_results.append({
                         "index": idx,
