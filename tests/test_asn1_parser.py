@@ -83,7 +83,8 @@ def test_parse_simple_sequence():
     assert len(node.value) == 1
     child = node.value[0]
     assert child.tag_name == "INTEGER"
-    assert child.value == "1"
+    assert child.value["decimal"] == "1"
+    assert child.value["hex"] == "01"
 
 
 def test_parse_integer():
@@ -91,14 +92,16 @@ def test_parse_integer():
     data = bytes.fromhex("02010a")
     node = parse_asn1(data)
     assert node.tag_name == "INTEGER"
-    assert node.value == "10"
+    assert node.value["decimal"] == "10"
+    assert node.value["hex"] == "0a"
 
 
 def test_parse_integer_negative():
     # 02 01 ff = INTEGER -1
     data = bytes.fromhex("0201ff")
     node = parse_asn1(data)
-    assert node.value == "-1"
+    assert node.value["decimal"] == "-1"
+    assert node.value["hex"] == "ff"
 
 
 def test_parse_oid():
@@ -143,7 +146,8 @@ def test_parse_octet_string():
     data = bytes.fromhex("0403010203")
     node = parse_asn1(data)
     assert node.tag_name == "OCTET STRING"
-    assert "010203" in node.value
+    assert node.value["hex"] == "010203"
+    assert node.value["bytes"] == bytes.fromhex("010203")
 
 
 def test_parse_nested_sequence():
@@ -153,8 +157,8 @@ def test_parse_nested_sequence():
     node = parse_asn1(data)
     assert len(node.value) == 2
     assert node.value[0].tag_name == "SEQUENCE"
-    assert node.value[0].value[0].value == "1"
-    assert node.value[1].value == "2"
+    assert node.value[0].value[0].value["decimal"] == "1"
+    assert node.value[1].value["decimal"] == "2"
 
 
 def test_parse_string_from_hex():
@@ -223,14 +227,15 @@ def test_parse_context_specific():
     assert node.tag_class == "CONTEXT"
     assert node.constructed is True
     assert len(node.value) == 1
-    assert node.value[0].value == "1"
+    assert node.value[0].value["decimal"] == "1"
 
 
 def test_parse_x509_serial():
     """简单 X.509 序列号 0x1234。"""
     # INTEGER 0x1234 = 02 02 12 34
     node = parse_string("02021234")
-    assert node.value == "4660"  # 0x1234
+    assert node.value["hex"] == "1234"
+    assert node.value["decimal"] == "4660"  # 0x1234
 
 
 def test_bit_string_returns_dict():

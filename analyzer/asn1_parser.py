@@ -193,7 +193,12 @@ def _decode_oid(data: bytes) -> str:
 
 
 def _format_value(node: ASN1Node) -> Any:
-    """将节点 value 转为可读字符串。"""
+    """将节点 value 转为可读字符串。
+
+    ASN.1 DER 编码规则：
+    - INTEGER 为大端有符号；最高字节最高位为 1 时前缀 0x00 表示正数
+    - OCTET STRING / BIT STRING 是字节序列，应用 hex 显示
+    """
     if node.constructed:
         return node.value  # List[ASN1Node]
     raw = node.raw_value
@@ -201,8 +206,10 @@ def _format_value(node: ASN1Node) -> Any:
         if node.tag_number == 0x02:  # INTEGER
             if not raw:
                 return "0"
+            # 显示 hex（保留前导 00 表示正数）；同时给出十进制供参考
+            hex_str = raw.hex()
             n = int.from_bytes(raw, 'big', signed=True)
-            return str(n)
+            return {"hex": hex_str, "decimal": str(n)}
         if node.tag_number == 0x06:  # OID
             oid_str = _decode_oid(raw)
             name = KNOWN_OIDS.get(oid_str, "")
@@ -223,6 +230,8 @@ def _format_value(node: ASN1Node) -> Any:
                 "bytes": bit_bytes,
                 "bit_count": total_bits,
             }
+        if node.tag_number == 0x04:  # OCTET STRING -> hex
+            return {"hex": raw.hex(), "bytes": raw}
         if node.tag_number == 0x0C:  # UTF8String
             try:
                 return raw.decode('utf-8', errors='replace')
@@ -393,19 +402,48 @@ def format_tree(node: ASN1Node, indent: int = 0, max_lines: int = 200,
                          f"未使用 {v['unused_bits']} bits, {len(v['bytes'])} bytes)")
             # 完整 hex（不截断）
             if v['bytes']:
-                # 按每行 64 hex 字符折行
                 hex_str = v['bytes'].hex()
                 chunk_size = 64
                 for i in range(0, len(hex_str), chunk_size):
                     sub = hex_str[i:i + chunk_size]
                     lines.append(f"{prefix}  {sub}")
+        elif (node.tag_class == "UNIVERSAL"
+              and node.tag_number == 0x02
+              and isinstance(node.value, dict)
+              and "hex" in node.value):
+            # INTEGER: 显示 hex（带前导 00）和十进制
+            v = node.value
+            hex_str = v["hex"]
+            dec = v["decimal"]
+            # 折行显示 hex（每行 64 字符）
+            chunk_size = 64
+            if len(hex_str) > chunk_size:
+                lines.append(f"{prefix}INTEGER ({len(node.raw_value)} bytes)")
+                for i in range(0, len(hex_str), chunk_size):
+                    sub = hex_str[i:i + chunk_size]
+                    lines.append(f"{prefix}  {sub}")
+                lines.append(f"{prefix}  = {dec}")
+            else:
+                lines.append(f"{prefix}INTEGER = {hex_str}  = {dec}")
+        elif (node.tag_class == "UNIVERSAL"
+              and node.tag_number == 0x04
+              and isinstance(node.value, dict)
+              and "hex" in node.value):
+            # OCTET STRING: 显示 hex（折行）
+            v = node.value
+            hex_str = v["hex"]
+            chunk_size = 64
+            lines.append(f"{prefix}OCTET STRING ({len(node.raw_value)} bytes)")
+            for i in range(0, len(hex_str), chunk_size):
+                sub = hex_str[i:i + chunk_size]
+                lines.append(f"{prefix}  {sub}")
         elif isinstance(node.value, str):
             val_str = node.value
             if max_value_bytes > 0 and len(val_str) > max_value_bytes:
                 val_str = val_str[:max_value_bytes - 3] + "..."
             lines.append(f"{prefix}{node.tag_name} = {val_str}")
         elif isinstance(node.value, dict):
-            # 其他 dict 类型（OCTET STRING 等）
+            # 其他 dict 类型
             for k, v in node.value.items():
                 lines.append(f"{prefix}{node.tag_name}.{k} = {v}")
         else:
